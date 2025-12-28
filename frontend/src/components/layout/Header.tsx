@@ -3,7 +3,9 @@
  */
 
 import { Link } from 'react-router-dom'
-import { Pill, Settings } from 'lucide-react'
+import { Pill, Settings, FileText } from 'lucide-react'
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export default function Header() {
   return (
@@ -26,11 +28,12 @@ export default function Header() {
               관리
             </Link>
             <a
-              href="/docs"
+              href={`${API_BASE_URL}/docs`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-glass-muted hover:text-white transition-colors"
+              className="text-glass-muted hover:text-white transition-colors flex items-center gap-1"
             >
+              <FileText className="w-4 h-4" />
               API 문서
             </a>
           </nav>
