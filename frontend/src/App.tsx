@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import SearchResultsPage from './pages/SearchResultsPage'
 import DrugDetailPage from './pages/DrugDetailPage'
 import AdminPage from './pages/AdminPage'
+import VectorSpacePage from './pages/VectorSpacePage'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/search" element={<SearchResultsPage />} />
         <Route path="/drugs/:drugId" element={<DrugDetailPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/vector-space" element={<VectorSpacePage />} />
       </Routes>
     </Layout>
   )
