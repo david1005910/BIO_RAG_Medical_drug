@@ -2,7 +2,7 @@
  * 검색 결과 페이지
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import SearchForm from '../components/search/SearchForm'
@@ -11,17 +11,23 @@ import AIResponse from '../components/ai/AIResponse'
 import Loading from '../components/common/Loading'
 import Disclaimer from '../components/common/Disclaimer'
 import useSearch from '../hooks/useSearch'
-import { SearchResponse } from '../types/api'
+import { useSearchContext } from '../context/SearchContext'
 
 export default function SearchResultsPage() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get('q') || ''
-  const [searchResult, setSearchResult] = useState<SearchResponse | null>(null)
+
+  // Context에서 검색 상태 가져오기
+  const { searchState, setSearchState, isValidCache } = useSearchContext()
+
+  // 캐시된 결과가 있으면 사용
+  const searchResult = isValidCache(query) ? searchState?.result : null
 
   const { mutate: search, isPending, error } = useSearch()
 
   useEffect(() => {
-    if (query) {
+    // 쿼리가 있고, 유효한 캐시가 없을 때만 검색 실행
+    if (query && !isValidCache(query)) {
       handleSearch(query)
     }
   }, [query])
@@ -31,7 +37,8 @@ export default function SearchResultsPage() {
       { query: newQuery, top_k: 5, include_ai_response: true },
       {
         onSuccess: (data) => {
-          setSearchResult(data)
+          // Context에 검색 결과 저장
+          setSearchState(newQuery, data)
         },
       }
     )

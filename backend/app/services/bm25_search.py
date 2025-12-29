@@ -22,6 +22,19 @@ class KoreanTokenizer:
             '하다', '있다', '되다', '없다', '않다', '이다', '아니다',
             '그', '저', '이것', '그것', '저것', '여기', '거기', '저기',
             '및', '등', '것', '수', '때', '중', '내', '위', '후', '전',
+            '좀', '너무', '매우', '정말', '아주', '많이', '조금', '약간',
+            '해요', '합니다', '해주세요', '주세요', '싶어요', '같아요',
+        }
+
+        # 증상 관련 키워드 (가중치 높게)
+        self.symptom_keywords = {
+            '두통', '열', '발열', '기침', '콧물', '재채기', '인후통', '목아픔',
+            '복통', '설사', '변비', '구토', '소화불량', '속쓰림', '위통',
+            '근육통', '관절통', '요통', '허리', '어깨', '무릎',
+            '피로', '무기력', '권태', '졸음', '불면', '두드러기',
+            '가려움', '발진', '염증', '통증', '붓기', '부종',
+            '어지러움', '현기증', '메스꺼움', '구역질',
+            '감기', '독감', '알레르기', '비염', '천식',
         }
 
     def tokenize(self, text: str) -> List[str]:
@@ -46,14 +59,25 @@ class KoreanTokenizer:
         # 불용어 제거 및 짧은 토큰 제거
         tokens = [t for t in tokens if t not in self.stopwords and len(t) > 1]
 
-        # 한글 2-gram 추가 (복합어 처리)
+        # N-gram 생성 (2-gram, 3-gram)
         ngrams = []
         for token in tokens:
             ngrams.append(token)
-            # 한글인 경우 2-gram 생성
+
+            # 한글인 경우 N-gram 생성
             if re.match(r'^[가-힣]+$', token) and len(token) >= 2:
+                # 2-gram
                 for i in range(len(token) - 1):
                     ngrams.append(token[i:i+2])
+                # 3-gram (긴 단어의 경우)
+                if len(token) >= 3:
+                    for i in range(len(token) - 2):
+                        ngrams.append(token[i:i+3])
+
+            # 증상 키워드면 가중치 추가 (중복 추가)
+            if token in self.symptom_keywords:
+                ngrams.append(token)
+                ngrams.append(token)
 
         return ngrams
 
@@ -272,15 +296,26 @@ class HybridSearchService:
             self._normalize_scores(bm25_scores) if bm25_scores else []
         ))
 
+        # 적응형 가중치: BM25 결과가 좋지 않으면 Dense에 더 많은 가중치
+        max_bm25 = max(bm25_scores) if bm25_scores else 0
+        if max_bm25 < 1.0:  # BM25 매칭이 약한 경우
+            effective_dense_weight = 0.85
+            effective_sparse_weight = 0.15
+            logger.info(f"📊 적응형 가중치 적용: Dense={effective_dense_weight}, BM25={effective_sparse_weight}")
+        else:
+            effective_dense_weight = self.dense_weight
+            effective_sparse_weight = self.sparse_weight
+
         # Hybrid 점수 계산
         hybrid_results = []
         for drug_id in all_drug_ids:
-            dense_score = normalized_dense.get(drug_id, 0)
-            bm25_score = normalized_bm25.get(drug_id, 0)
+            # 정규화된 점수는 hybrid 계산에만 사용
+            norm_dense = normalized_dense.get(drug_id, 0)
+            norm_bm25 = normalized_bm25.get(drug_id, 0)
 
             hybrid_score = (
-                self.dense_weight * dense_score +
-                self.sparse_weight * bm25_score
+                effective_dense_weight * norm_dense +
+                effective_sparse_weight * norm_bm25
             )
 
             # 문서 정보 가져오기 (dense 우선, 없으면 bm25)
@@ -288,8 +323,22 @@ class HybridSearchService:
             if doc:
                 result = doc.copy()
                 result["hybrid_score"] = hybrid_score
-                result["dense_score"] = dense_score
-                result["bm25_score"] = bm25_score
+
+                # dense_score: 원본 코사인 유사도 (0~1 실제 값)
+                if drug_id in dense_map:
+                    result["dense_score"] = dense_map[drug_id].get("similarity", 0)
+                else:
+                    # BM25만 있는 경우도 hybrid_score의 dense 비중을 표시
+                    result["dense_score"] = hybrid_score * 0.3  # 추정값
+
+                # bm25_score: 원본 BM25 점수를 0-1로 정규화
+                if drug_id in bm25_map:
+                    # BM25 원본 점수를 최대값 기준으로 정규화
+                    max_bm25 = max(bm25_scores) if bm25_scores else 1
+                    result["bm25_score"] = bm25_map[drug_id].get("bm25_score", 0) / max_bm25 if max_bm25 > 0 else 0
+                else:
+                    result["bm25_score"] = 0
+
                 # similarity는 원래 값 유지
                 if drug_id in dense_map:
                     result["similarity"] = dense_map[drug_id].get("similarity", 0)

@@ -136,8 +136,18 @@ class RAGEngine:
                 logger.info(f"✅ Hybrid Search 완료: {len(results)}개 결과")
             except Exception as e:
                 logger.warning(f"⚠️ Hybrid Search 실패, Dense만 사용: {e}")
+                # Dense 검색만 사용 시 점수 필드 추가
+                for r in dense_results:
+                    r["dense_score"] = r.get("similarity", 0)
+                    r["bm25_score"] = 0
+                    r["hybrid_score"] = r.get("similarity", 0)
                 results = dense_results
         else:
+            # Dense 검색만 사용 시 점수 필드 추가
+            for r in dense_results:
+                r["dense_score"] = r.get("similarity", 0)
+                r["bm25_score"] = 0
+                r["hybrid_score"] = r.get("similarity", 0)
             results = dense_results
 
         # 4. Cohere Reranking (활성화된 경우)
