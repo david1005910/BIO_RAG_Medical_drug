@@ -29,6 +29,9 @@ class SearchResult:
     side_effects: Optional[str]
     similarity: float
     relevance_score: Optional[float] = None  # Cohere reranking score
+    dense_score: Optional[float] = None  # Dense(벡터) 검색 정규화 점수
+    bm25_score: Optional[float] = None  # BM25(키워드) 검색 정규화 점수
+    hybrid_score: Optional[float] = None  # Hybrid(Dense+BM25) 결합 점수
 
 
 @dataclass
@@ -162,6 +165,9 @@ class RAGEngine:
                 side_effects=r["side_effects"],
                 similarity=r["similarity"],
                 relevance_score=r.get("relevance_score"),
+                dense_score=r.get("dense_score"),
+                bm25_score=r.get("bm25_score"),
+                hybrid_score=r.get("hybrid_score"),
             )
             for r in results
         ]

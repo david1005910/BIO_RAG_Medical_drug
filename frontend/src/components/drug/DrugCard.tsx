@@ -3,15 +3,35 @@
  */
 
 import { Link } from 'react-router-dom'
-import { Pill, Building2, ChevronRight } from 'lucide-react'
+import { Pill, Building2, ChevronRight, BarChart3 } from 'lucide-react'
 import { DrugResult } from '../../types/drug'
 
 interface DrugCardProps {
   drug: DrugResult
 }
 
+// 스코어 바 컴포넌트
+function ScoreBar({ label, score, color }: { label: string; score: number | null; color: string }) {
+  if (score === null || score === undefined) return null
+  const percent = Math.round(score * 100)
+
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-14 text-glass-muted">{label}</span>
+      <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{ width: `${percent}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="w-10 text-right" style={{ color }}>{percent}%</span>
+    </div>
+  )
+}
+
 export default function DrugCard({ drug }: DrugCardProps) {
   const similarityPercent = Math.round(drug.similarity * 100)
+  const hasScores = drug.dense_score !== null || drug.bm25_score !== null || drug.hybrid_score !== null
 
   const getSimilarityStyle = (percent: number) => {
     if (percent >= 80) return 'badge-high'
@@ -41,9 +61,22 @@ export default function DrugCard({ drug }: DrugCardProps) {
           </div>
 
           {/* 효능효과 */}
-          <p className="text-glass-muted text-sm line-clamp-2">
+          <p className="text-glass-muted text-sm line-clamp-2 mb-3">
             {drug.efficacy || '효능 정보가 없습니다.'}
           </p>
+
+          {/* 검색 점수 표시 */}
+          {hasScores && (
+            <div className="space-y-1.5 pt-2 border-t border-white/10">
+              <div className="flex items-center gap-1 text-xs text-glass-muted mb-1">
+                <BarChart3 className="w-3 h-3" />
+                <span>검색 점수</span>
+              </div>
+              <ScoreBar label="Dense" score={drug.dense_score} color="#3b82f6" />
+              <ScoreBar label="BM25" score={drug.bm25_score} color="#22c55e" />
+              <ScoreBar label="Hybrid" score={drug.hybrid_score} color="#a855f7" />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2 ml-4 flex-shrink-0">

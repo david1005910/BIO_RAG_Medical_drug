@@ -11,6 +11,10 @@ export interface DrugResult {
   caution_info: string | null
   side_effects: string | null
   similarity: number
+  relevance_score: number | null
+  dense_score: number | null
+  bm25_score: number | null
+  hybrid_score: number | null
 }
 
 export interface DrugDetail {

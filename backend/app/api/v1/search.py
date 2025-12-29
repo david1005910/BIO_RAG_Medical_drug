@@ -128,6 +128,9 @@ async def search_drugs(
                     side_effects=r.side_effects,
                     similarity=r.similarity,
                     relevance_score=r.relevance_score,
+                    dense_score=r.dense_score,
+                    bm25_score=r.bm25_score,
+                    hybrid_score=r.hybrid_score,
                 )
                 for r in response.results
             ]
@@ -170,6 +173,9 @@ async def search_drugs(
                     side_effects=r.side_effects,
                     similarity=r.similarity,
                     relevance_score=r.relevance_score,
+                    dense_score=r.dense_score,
+                    bm25_score=r.bm25_score,
+                    hybrid_score=r.hybrid_score,
                 )
                 for r in search_results
             ]

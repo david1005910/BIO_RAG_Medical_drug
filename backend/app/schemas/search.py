@@ -31,6 +31,9 @@ class DrugResult(BaseModel):
     side_effects: Optional[str] = Field(None, description="부작용")
     similarity: float = Field(..., ge=0, le=1, description="벡터 유사도 점수")
     relevance_score: Optional[float] = Field(None, ge=0, le=1, description="Cohere Reranking 관련성 점수")
+    dense_score: Optional[float] = Field(None, ge=0, le=1, description="Dense(벡터) 검색 정규화 점수")
+    bm25_score: Optional[float] = Field(None, ge=0, le=1, description="BM25(키워드) 검색 정규화 점수")
+    hybrid_score: Optional[float] = Field(None, ge=0, le=1, description="Hybrid(Dense+BM25) 결합 점수")
 
 
 class DiseaseResult(BaseModel):
