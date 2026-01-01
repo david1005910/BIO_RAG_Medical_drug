@@ -226,7 +226,16 @@ class BM25SearchService:
 
 
 class HybridSearchService:
-    """Hybrid Search - Dense (Vector) + Sparse (BM25) 결합"""
+    """Hybrid Search - Dense (Vector) + Sparse (BM25) 결합
+
+    점수 체계:
+    - Dense Score: 0~1 (코사인 유사도)
+    - Sparse Score: 0~30 기준으로 0~1로 정규화 (30으로 나눔, 최대 1)
+    - Hybrid Score: dense * 0.7 + sparse * 0.3
+    """
+
+    # BM25 점수 정규화 기준 (최대 점수)
+    BM25_MAX_SCORE = 30.0
 
     def __init__(
         self,
@@ -243,18 +252,17 @@ class HybridSearchService:
         """BM25 인덱스 초기화"""
         await self.bm25_service.initialize()
 
-    def _normalize_scores(self, scores: List[float]) -> List[float]:
-        """점수 정규화 (0-1 범위로)"""
-        if not scores:
-            return []
+    def _normalize_bm25_score(self, score: float) -> float:
+        """BM25 점수를 0-1 범위로 정규화 (30점 기준)
 
-        min_score = min(scores)
-        max_score = max(scores)
+        Args:
+            score: 원본 BM25 점수
 
-        if max_score == min_score:
-            return [1.0] * len(scores)
-
-        return [(s - min_score) / (max_score - min_score) for s in scores]
+        Returns:
+            0~1 범위로 정규화된 점수
+        """
+        normalized = score / self.BM25_MAX_SCORE
+        return min(normalized, 1.0)  # 최대 1.0으로 제한
 
     async def search(
         self,
@@ -282,68 +290,44 @@ class HybridSearchService:
         # 모든 drug_id 수집
         all_drug_ids = set(dense_map.keys()) | set(bm25_map.keys())
 
-        # Dense scores 정규화
-        dense_scores = [r.get("similarity", 0) for r in dense_results]
-        normalized_dense = dict(zip(
-            [r["drug_id"] for r in dense_results],
-            self._normalize_scores(dense_scores) if dense_scores else []
-        ))
-
-        # BM25 scores 정규화
-        bm25_scores = [r.get("bm25_score", 0) for r in bm25_results]
-        normalized_bm25 = dict(zip(
-            [r["drug_id"] for r in bm25_results],
-            self._normalize_scores(bm25_scores) if bm25_scores else []
-        ))
-
-        # 적응형 가중치: BM25 결과가 좋지 않으면 Dense에 더 많은 가중치
-        max_bm25 = max(bm25_scores) if bm25_scores else 0
-        if max_bm25 < 1.0:  # BM25 매칭이 약한 경우
-            effective_dense_weight = 0.85
-            effective_sparse_weight = 0.15
-            logger.info(f"📊 적응형 가중치 적용: Dense={effective_dense_weight}, BM25={effective_sparse_weight}")
-        else:
-            effective_dense_weight = self.dense_weight
-            effective_sparse_weight = self.sparse_weight
+        logger.info(f"📊 Hybrid 가중치: Dense={self.dense_weight}, Sparse={self.sparse_weight}")
 
         # Hybrid 점수 계산
         hybrid_results = []
         for drug_id in all_drug_ids:
-            # 정규화된 점수는 hybrid 계산에만 사용
-            norm_dense = normalized_dense.get(drug_id, 0)
-            norm_bm25 = normalized_bm25.get(drug_id, 0)
+            # Dense score: 원본 코사인 유사도 (0~1)
+            if drug_id in dense_map:
+                dense_score = dense_map[drug_id].get("similarity", 0)
+            else:
+                dense_score = 0
 
+            # Sparse score: BM25 점수를 30점 기준으로 0~1 정규화
+            if drug_id in bm25_map:
+                raw_bm25 = bm25_map[drug_id].get("bm25_score", 0)
+                sparse_score = self._normalize_bm25_score(raw_bm25)
+            else:
+                sparse_score = 0
+
+            # Hybrid score: sparse * 0.7 + dense * 0.3
             hybrid_score = (
-                effective_dense_weight * norm_dense +
-                effective_sparse_weight * norm_bm25
+                self.sparse_weight * sparse_score +
+                self.dense_weight * dense_score
             )
 
             # 문서 정보 가져오기 (dense 우선, 없으면 bm25)
             doc = dense_map.get(drug_id) or bm25_map.get(drug_id)
             if doc:
                 result = doc.copy()
+                result["dense_score"] = dense_score
+                result["bm25_score"] = sparse_score  # 정규화된 점수 (0~1)
                 result["hybrid_score"] = hybrid_score
 
-                # dense_score: 원본 코사인 유사도 (0~1 실제 값)
-                if drug_id in dense_map:
-                    result["dense_score"] = dense_map[drug_id].get("similarity", 0)
-                else:
-                    # BM25만 있는 경우도 hybrid_score의 dense 비중을 표시
-                    result["dense_score"] = hybrid_score * 0.3  # 추정값
-
-                # bm25_score: 원본 BM25 점수를 0-1로 정규화
-                if drug_id in bm25_map:
-                    # BM25 원본 점수를 최대값 기준으로 정규화
-                    max_bm25 = max(bm25_scores) if bm25_scores else 1
-                    result["bm25_score"] = bm25_map[drug_id].get("bm25_score", 0) / max_bm25 if max_bm25 > 0 else 0
-                else:
-                    result["bm25_score"] = 0
-
-                # similarity는 원래 값 유지
+                # similarity는 원래 값 유지 (dense가 있으면 그 값, 없으면 hybrid)
                 if drug_id in dense_map:
                     result["similarity"] = dense_map[drug_id].get("similarity", 0)
                 else:
-                    result["similarity"] = hybrid_score  # BM25만 있는 경우
+                    result["similarity"] = hybrid_score
+
                 hybrid_results.append(result)
 
         # Hybrid 점수로 정렬
@@ -371,5 +355,14 @@ def get_hybrid_service(
     dense_weight: float = 0.7,
     sparse_weight: float = 0.3,
 ) -> HybridSearchService:
-    """Hybrid Search 서비스 인스턴스 반환"""
+    """Hybrid Search 서비스 인스턴스 반환
+
+    Args:
+        session: DB 세션
+        dense_weight: Dense(벡터) 검색 가중치 (기본 0.7)
+        sparse_weight: Sparse(BM25) 검색 가중치 (기본 0.3)
+
+    Returns:
+        HybridSearchService 인스턴스
+    """
     return HybridSearchService(session, dense_weight, sparse_weight)

@@ -1,4 +1,4 @@
-"""데이터 동기화 서비스 - API → DB → Vector Index"""
+"""데이터 동기화 서비스 - API → DB → Vector Index (PGVector + Qdrant)"""
 import logging
 from typing import List, Optional
 
@@ -10,6 +10,9 @@ from app.models.drug import Drug
 from app.services.data_preprocessor import DrugDataPreprocessor
 from app.services.embedding import get_embedding_service
 from app.services.vector_db import VectorDBService
+from app.services.qdrant_service import get_qdrant_service
+from app.services.splade_service import get_splade_service
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +131,7 @@ class DataSyncService:
         return saved_count
 
     async def _build_vectors(self, processed: List[dict]) -> int:
-        """벡터 인덱스 구축"""
+        """벡터 인덱스 구축 (PGVector + Qdrant)"""
         vector_db = VectorDBService(self.session)
 
         # 기존 벡터 삭제
@@ -138,10 +141,11 @@ class DataSyncService:
         documents = [item["document"] for item in processed]
         drug_ids = [item["id"] for item in processed]
 
-        # 배치 임베딩 생성
+        # 배치 임베딩 생성 (Dense)
+        logger.info("🧠 Dense 임베딩 생성 중...")
         embeddings = await self.embedding_service.embed_batch(documents)
 
-        # 벡터 저장
+        # PGVector에 저장
         vectors = [
             {
                 "drug_id": drug_id,
@@ -150,11 +154,67 @@ class DataSyncService:
             }
             for drug_id, embedding, document in zip(drug_ids, embeddings, documents)
         ]
+        pgvector_count = await vector_db.add_vectors_batch(vectors)
 
-        return await vector_db.add_vectors_batch(vectors)
+        # Qdrant + SPLADE 인덱싱 (활성화된 경우)
+        if settings.ENABLE_QDRANT:
+            await self._build_qdrant_vectors(processed, embeddings)
+
+        return pgvector_count
+
+    async def _build_qdrant_vectors(
+        self,
+        processed: List[dict],
+        dense_embeddings: List[List[float]],
+    ) -> int:
+        """Qdrant 벡터 인덱스 구축 (Dense + Sparse)"""
+        import gc
+        try:
+            qdrant_service = get_qdrant_service()
+            splade_service = get_splade_service()
+
+            # Qdrant 연결 확인
+            if not qdrant_service._initialized:
+                await qdrant_service.connect()
+                await qdrant_service.create_collection(recreate=True)
+
+            # SPLADE Sparse 임베딩 생성 (작은 배치로 메모리 절약)
+            logger.info("🔧 SPLADE Sparse 임베딩 생성 중...")
+            documents = [item["document"] for item in processed]
+            sparse_embeddings = await splade_service.encode_batch(documents, batch_size=8)
+            gc.collect()  # 메모리 정리
+
+            # Qdrant 문서 준비
+            qdrant_docs = [
+                {
+                    "drug_id": item["id"],
+                    "item_name": item.get("item_name", ""),
+                    "entp_name": item.get("entp_name", ""),
+                    "efficacy": item.get("efficacy", ""),
+                    "use_method": item.get("use_method", ""),
+                    "caution_info": item.get("caution_info", ""),
+                    "side_effects": item.get("side_effects", ""),
+                }
+                for item in processed
+            ]
+
+            # Qdrant에 업서트
+            logger.info("📤 Qdrant에 벡터 업서트 중...")
+            qdrant_count = await qdrant_service.upsert_documents(
+                documents=qdrant_docs,
+                dense_vectors=dense_embeddings,
+                sparse_vectors=sparse_embeddings,
+            )
+
+            logger.info(f"✅ Qdrant 인덱싱 완료: {qdrant_count}개")
+            return qdrant_count
+
+        except Exception as e:
+            logger.error(f"❌ Qdrant 인덱싱 실패: {e}")
+            return 0
 
     async def rebuild_vectors(self) -> int:
-        """기존 DB 데이터로 벡터 인덱스 재구축"""
+        """기존 DB 데이터로 벡터 인덱스 재구축 (PGVector + Qdrant)"""
         vector_db = VectorDBService(self.session)
 
         # DB에서 모든 의약품 조회
@@ -165,7 +225,7 @@ class DataSyncService:
             logger.warning("DB에 의약품 데이터가 없습니다.")
             return 0
 
-        # 문서 생성
+        # 문서 생성 (Qdrant용 메타데이터 포함)
         processed = []
         for drug in drugs:
             document = self.preprocessor._create_document(
@@ -179,7 +239,16 @@ class DataSyncService:
                 drug.side_effects or "",
                 drug.storage_method or "",
             )
-            processed.append({"id": drug.id, "document": document})
+            processed.append({
+                "id": drug.id,
+                "document": document,
+                "item_name": drug.item_name,
+                "entp_name": drug.entp_name or "",
+                "efficacy": drug.efficacy or "",
+                "use_method": drug.use_method or "",
+                "caution_info": drug.caution_info or "",
+                "side_effects": drug.side_effects or "",
+            })
 
         # 기존 벡터 삭제
         await vector_db.delete_all()
@@ -188,6 +257,7 @@ class DataSyncService:
         documents = [item["document"] for item in processed]
         drug_ids = [item["id"] for item in processed]
 
+        logger.info("🧠 Dense 임베딩 생성 중...")
         embeddings = await self.embedding_service.embed_batch(documents)
 
         vectors = [
@@ -199,4 +269,10 @@ class DataSyncService:
             for drug_id, embedding, document in zip(drug_ids, embeddings, documents)
         ]
 
-        return await vector_db.add_vectors_batch(vectors)
+        pgvector_count = await vector_db.add_vectors_batch(vectors)
+
+        # Qdrant + SPLADE 인덱싱 (활성화된 경우)
+        if settings.ENABLE_QDRANT:
+            await self._build_qdrant_vectors(processed, embeddings)
+
+        return pgvector_count

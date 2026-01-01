@@ -5,8 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import search, drugs, chat, admin
+from app.api.v1 import search, drugs, chat, admin, graph
 from app.core.config import settings
+from app.services.qdrant_service import initialize_qdrant
+from app.services.splade_service import initialize_splade
+from app.external.neo4j_client import initialize_neo4j, close_neo4j
 
 # 로깅 설정
 logging.basicConfig(
@@ -23,9 +26,32 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Medical RAG API 시작...")
     logger.info(f"📊 LLM 모델: {settings.LLM_MODEL}")
     logger.info(f"📊 임베딩 모델: {settings.EMBEDDING_MODEL}")
+
+    # Qdrant + SPLADE 초기화 (활성화된 경우)
+    if settings.ENABLE_QDRANT:
+        logger.info("🔧 Qdrant + SPLADE 서비스 초기화 중...")
+        qdrant_ok = await initialize_qdrant()
+        splade_ok = await initialize_splade()
+        if qdrant_ok and splade_ok:
+            logger.info("✅ Qdrant + SPLADE 서비스 초기화 완료")
+        else:
+            logger.warning("⚠️ Qdrant/SPLADE 초기화 실패, PGVector + BM25로 폴백")
+    else:
+        logger.info("📊 PGVector + BM25 모드 사용")
+
+    # Neo4j 그래프 DB 초기화 (활성화된 경우)
+    if settings.ENABLE_NEO4J:
+        logger.info("🔧 Neo4j 그래프 DB 초기화 중...")
+        neo4j_ok = await initialize_neo4j()
+        if neo4j_ok:
+            logger.info("✅ Neo4j 그래프 DB 초기화 완료")
+        else:
+            logger.warning("⚠️ Neo4j 초기화 실패, 그래프 기능 비활성화")
+
     yield
     # 종료 시
     logger.info("👋 Medical RAG API 종료...")
+    await close_neo4j()
 
 
 def create_app() -> FastAPI:
@@ -68,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(drugs.router, prefix="/api/v1", tags=["의약품"])
     app.include_router(chat.router, prefix="/api/v1", tags=["대화"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["관리자"])
+    app.include_router(graph.router, prefix="/api/v1", tags=["그래프"])
 
     @app.get("/", tags=["Root"])
     async def root():
