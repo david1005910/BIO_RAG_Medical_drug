@@ -165,7 +165,7 @@ export default function AdminPage() {
               max={100}
               value={syncPages}
               onChange={(e) => setSyncPages(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-gray-900 bg-white"
             />
             <p className="text-sm text-gray-500 mt-1">
               예상 수집량: 약 {(syncPages * 100).toLocaleString()}개

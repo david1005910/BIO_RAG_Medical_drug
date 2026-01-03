@@ -4,7 +4,7 @@ import HomePage from './pages/HomePage'
 import SearchResultsPage from './pages/SearchResultsPage'
 import DrugDetailPage from './pages/DrugDetailPage'
 import AdminPage from './pages/AdminPage'
-import VectorSpacePage from './pages/VectorSpacePage'
+import RAGProcessPage from './pages/RAGProcessPage'
 
 function App() {
   return (
@@ -14,7 +14,7 @@ function App() {
         <Route path="/search" element={<SearchResultsPage />} />
         <Route path="/drugs/:drugId" element={<DrugDetailPage />} />
         <Route path="/admin" element={<AdminPage />} />
-        <Route path="/vector-space" element={<VectorSpacePage />} />
+        <Route path="/rag-process" element={<RAGProcessPage />} />
       </Routes>
     </Layout>
   )

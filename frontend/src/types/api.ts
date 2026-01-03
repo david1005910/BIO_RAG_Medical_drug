@@ -43,18 +43,49 @@ export interface PaginatedResponse<T> {
 
 export interface ChatRequest {
   message: string
+  session_id?: string
   top_k?: number
+  use_memory?: boolean
+}
+
+export interface ChatSource {
+  id: string
+  name: string
+  similarity: number
 }
 
 export interface ChatResponse {
   success: boolean
   message: string
-  sources: Array<{
-    id: string
-    name: string
-    similarity: number
-  }>
+  sources: ChatSource[]
   disclaimer: string
+  session_id?: string
+  from_cache: boolean
+  conversation_turn: number
+}
+
+export interface ConversationHistoryItem {
+  query: string
+  response: string
+  timestamp: string
+}
+
+export interface ConversationHistoryResponse {
+  success: boolean
+  session_id: string
+  history: ConversationHistoryItem[]
+  total_turns: number
+}
+
+export interface MemoryStatusResponse {
+  success: boolean
+  memory_enabled: boolean
+  stats: {
+    enabled: boolean
+    cache_ttl: number
+    history_ttl: number
+    max_history: number
+  }
 }
 
 export interface APIError {

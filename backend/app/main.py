@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import search, drugs, chat, admin, graph
+from app.api.v1 import search, drugs, chat, admin, graph, documents
 from app.core.config import settings
 from app.services.qdrant_service import initialize_qdrant
 from app.services.splade_service import initialize_splade
 from app.external.neo4j_client import initialize_neo4j, close_neo4j
+from app.external.redis_client import initialize_redis, close_redis
 
 # 로깅 설정
 logging.basicConfig(
@@ -48,10 +49,20 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("⚠️ Neo4j 초기화 실패, 그래프 기능 비활성화")
 
+    # Redis 메모리 서비스 초기화
+    if settings.ENABLE_MEMORY:
+        logger.info("🔧 Redis 메모리 서비스 초기화 중...")
+        redis_ok = await initialize_redis()
+        if redis_ok:
+            logger.info("✅ Redis 메모리 서비스 초기화 완료")
+        else:
+            logger.warning("⚠️ Redis 초기화 실패, 메모리 기능 비활성화")
+
     yield
     # 종료 시
     logger.info("👋 Medical RAG API 종료...")
     await close_neo4j()
+    await close_redis()
 
 
 def create_app() -> FastAPI:
@@ -95,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api/v1", tags=["대화"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["관리자"])
     app.include_router(graph.router, prefix="/api/v1", tags=["그래프"])
+    app.include_router(documents.router, prefix="/api/v1/documents", tags=["문서"])
 
     @app.get("/", tags=["Root"])
     async def root():

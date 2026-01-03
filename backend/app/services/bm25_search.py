@@ -230,12 +230,13 @@ class HybridSearchService:
 
     점수 체계:
     - Dense Score: 0~1 (코사인 유사도)
-    - Sparse Score: 0~30 기준으로 0~1로 정규화 (30으로 나눔, 최대 1)
+    - Sparse Score: 0~50 기준으로 0~1로 정규화 (50으로 나눔, 최대 1)
     - Hybrid Score: dense * 0.7 + sparse * 0.3
     """
 
     # BM25 점수 정규화 기준 (최대 점수)
-    BM25_MAX_SCORE = 30.0
+    # 실제 테스트 결과 raw BM25 점수가 32-35 범위이므로 50으로 설정
+    BM25_MAX_SCORE = 50.0
 
     def __init__(
         self,
@@ -253,10 +254,10 @@ class HybridSearchService:
         await self.bm25_service.initialize()
 
     def _normalize_bm25_score(self, score: float) -> float:
-        """BM25 점수를 0-1 범위로 정규화 (30점 기준)
+        """BM25 점수를 0-1 범위로 정규화 (50점 기준)
 
         Args:
-            score: 원본 BM25 점수
+            score: 원본 BM25 점수 (일반적으로 0~50 범위)
 
         Returns:
             0~1 범위로 정규화된 점수

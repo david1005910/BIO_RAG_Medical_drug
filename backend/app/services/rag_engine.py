@@ -138,14 +138,17 @@ class RAGEngine:
             self.qdrant_service = None
             self.splade_service = None
 
-        # 기존 Hybrid Search 설정 (PGVector + BM25, Qdrant 비활성화시 사용)
+        # Hybrid Search 설정 (PGVector + BM25)
+        # Qdrant 모드에서도 폴백용으로 초기화
         self.enable_hybrid = settings.ENABLE_HYBRID_SEARCH
-        if self.enable_hybrid and not self.enable_qdrant:
+        if self.enable_hybrid:
             self.hybrid_service = hybrid_service or get_hybrid_service(
                 session,
                 dense_weight=settings.DENSE_WEIGHT,
                 sparse_weight=settings.SPARSE_WEIGHT,
             )
+            if not self.enable_qdrant:
+                logger.info("🔀 PGVector + BM25 Hybrid Search 모드 활성화")
         else:
             self.hybrid_service = None
 
@@ -270,6 +273,11 @@ class RAGEngine:
             if use_hybrid:
                 # 2. SPLADE 임베딩 (Sparse)
                 sparse_vector = await self.splade_service.encode(query)
+
+                # SPLADE가 빈 벡터를 반환하면 PGVector+BM25로 폴백
+                if not sparse_vector.get("indices") or not sparse_vector.get("values"):
+                    logger.warning("⚠️ SPLADE 빈 벡터 반환, PGVector+BM25로 폴백")
+                    return await self._search_with_pgvector(query, top_k, use_hybrid)
 
                 # 3. Qdrant 하이브리드 검색
                 qdrant_results = await self.qdrant_service.hybrid_search(

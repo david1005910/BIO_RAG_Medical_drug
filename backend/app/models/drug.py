@@ -52,3 +52,21 @@ class DrugVector(Base):
 
     def __repr__(self):
         return f"<DrugVector(id={self.id}, drug_id={self.drug_id})>"
+
+
+class DocumentVector(Base):
+    """문서 벡터 임베딩 테이블 (PDF, DOCX 등)"""
+
+    __tablename__ = "document_vectors"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id = Column(String(500), nullable=False, index=True)  # 파일명 또는 문서 ID
+    chunk_id = Column(String(500), nullable=False, unique=True)  # 청크 고유 ID
+    embedding = Column(Vector(1536), nullable=False)
+    content = Column(Text, nullable=False)  # 청크 텍스트
+    chunk_index = Column(Integer, default=0)
+    extra_data = Column(Text)  # JSON 형태의 메타데이터
+    created_at = Column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<DocumentVector(id={self.id}, document_id={self.document_id})>"

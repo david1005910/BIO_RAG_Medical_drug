@@ -4,7 +4,8 @@
 
 import { useState, FormEvent, ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Loader2 } from 'lucide-react'
+import { Search, Loader2, Brain, BrainCircuit } from 'lucide-react'
+import { useMemoryContext } from '../../context/MemoryContext'
 
 interface SearchFormProps {
   initialQuery?: string
@@ -28,6 +29,7 @@ export default function SearchForm({
 }: SearchFormProps) {
   const [query, setQuery] = useState(initialQuery)
   const navigate = useNavigate()
+  const { isMemoryEnabled, toggleMemory, conversationTurn, lastFromCache } = useMemoryContext()
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value)
@@ -99,6 +101,45 @@ export default function SearchForm({
           </button>
         </div>
       </form>
+
+      {/* 메모리 토글 및 상태 */}
+      <div className="mt-4 flex items-center justify-center gap-4">
+        <button
+          type="button"
+          onClick={toggleMemory}
+          className={`
+            flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300
+            ${isMemoryEnabled
+              ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 hover:bg-cyan-500/30'
+              : 'bg-gray-500/20 border border-gray-500/50 text-gray-400 hover:bg-gray-500/30'
+            }
+          `}
+          title={isMemoryEnabled ? '메모리 기능 켜짐 - 대화 기록이 저장됩니다' : '메모리 기능 꺼짐'}
+        >
+          {isMemoryEnabled ? (
+            <BrainCircuit className="w-5 h-5" />
+          ) : (
+            <Brain className="w-5 h-5" />
+          )}
+          <span className="text-sm font-medium">
+            Memory {isMemoryEnabled ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
+        {/* 메모리 상태 표시 */}
+        {isMemoryEnabled && conversationTurn > 0 && (
+          <div className="flex items-center gap-2 text-sm text-glass-muted">
+            <span className="px-2 py-1 bg-glass-subtle rounded">
+              대화 {conversationTurn}턴
+            </span>
+            {lastFromCache && (
+              <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
+                캐시
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 예시 검색어 */}
       <div className="mt-4 flex flex-wrap gap-2 justify-center">

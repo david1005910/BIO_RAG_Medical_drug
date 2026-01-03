@@ -3,7 +3,7 @@
  */
 
 import { Link } from 'react-router-dom'
-import { Pill, Settings, FileText, Box } from 'lucide-react'
+import { Pill, Settings, FileText, Workflow } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -23,9 +23,9 @@ export default function Header() {
             <Link to="/" className="text-glass-muted hover:text-white transition-colors">
               홈
             </Link>
-            <Link to="/vector-space" className="text-glass-muted hover:text-white transition-colors flex items-center gap-1">
-              <Box className="w-4 h-4" />
-              3D 벡터
+            <Link to="/rag-process" className="text-glass-muted hover:text-white transition-colors flex items-center gap-1">
+              <Workflow className="w-4 h-4" />
+              RAG 프로세스
             </Link>
             <Link to="/admin" className="text-glass-muted hover:text-white transition-colors flex items-center gap-1">
               <Settings className="w-4 h-4" />

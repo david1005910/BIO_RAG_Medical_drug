@@ -10,21 +10,27 @@ interface DrugCardProps {
   drug: DrugResult
 }
 
-// 스코어 바 컴포넌트
-function ScoreBar({ label, score, color }: { label: string; score: number | null; color: string }) {
+// 스코어 텍스트 컴포넌트 (막대그래프 제거)
+function ScoreText({
+  label,
+  score,
+  color,
+  scale,
+}: {
+  label: string
+  score: number | null
+  color: string
+  scale: string
+}) {
   if (score === null || score === undefined) return null
-  const percent = Math.round(score * 100)
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-14 text-glass-muted">{label}</span>
-      <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${percent}%`, backgroundColor: color }}
-        />
-      </div>
-      <span className="w-10 text-right" style={{ color }}>{percent}%</span>
+      <span className="text-glass-muted">{label}</span>
+      <span style={{ color }} className="font-medium">
+        {score.toFixed(2)}
+      </span>
+      <span className="text-glass-subtle text-[10px]">({scale})</span>
     </div>
   )
 }
@@ -67,14 +73,31 @@ export default function DrugCard({ drug }: DrugCardProps) {
 
           {/* 검색 점수 표시 */}
           {hasScores && (
-            <div className="space-y-1.5 pt-2 border-t border-white/10">
-              <div className="flex items-center gap-1 text-xs text-glass-muted mb-1">
+            <div className="pt-2 border-t border-white/10">
+              <div className="flex items-center gap-1 text-xs text-glass-muted mb-2">
                 <BarChart3 className="w-3 h-3" />
                 <span>검색 점수</span>
               </div>
-              <ScoreBar label="Dense" score={drug.dense_score} color="#3b82f6" />
-              <ScoreBar label="BM25" score={drug.bm25_score} color="#22c55e" />
-              <ScoreBar label="Hybrid" score={drug.hybrid_score} color="#a855f7" />
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <ScoreText
+                  label="Dense"
+                  score={drug.dense_score}
+                  color="#3b82f6"
+                  scale="0-1"
+                />
+                <ScoreText
+                  label="SPLADE"
+                  score={drug.bm25_score !== null ? drug.bm25_score * 50 : null}
+                  color="#22c55e"
+                  scale="0-50"
+                />
+                <ScoreText
+                  label="Hybrid"
+                  score={drug.hybrid_score}
+                  color="#a855f7"
+                  scale="0-1"
+                />
+              </div>
             </div>
           )}
         </div>

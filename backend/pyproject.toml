@@ -29,6 +29,8 @@ dependencies = [
     "FlagEmbedding>=1.2.0",
     # Neo4j Graph Database
     "neo4j>=5.0.0",
+    # Redis for caching and memory
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]

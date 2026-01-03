@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # Redis (Optional)
     REDIS_URL: str = "redis://localhost:6379"
+    ENABLE_MEMORY: bool = True  # 대화 메모리 및 캐싱 기능
 
     # Security
     SECRET_KEY: str = "dev-secret-key-change-in-production"
@@ -74,6 +75,11 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = ""
     NEO4J_DATABASE: str = "neo4j"
     ENABLE_NEO4J: bool = False
+
+    # Document Processing Settings
+    DOCUMENTS_DIR: str = "./data/documents"
+    DOC_CHUNK_SIZE: int = 1000
+    DOC_CHUNK_OVERLAP: int = 200
 
     class Config:
         env_file = ".env"
