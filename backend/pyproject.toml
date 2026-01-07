@@ -31,6 +31,8 @@ dependencies = [
     "neo4j>=5.0.0",
     # Redis for caching and memory
     "redis>=5.0.0",
+    # DuckDB for lightweight memory backend
+    "duckdb>=0.9.0",
 ]
 
 [project.optional-dependencies]

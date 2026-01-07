@@ -9,8 +9,9 @@ from app.api.v1 import search, drugs, chat, admin, graph, documents
 from app.core.config import settings
 from app.services.qdrant_service import initialize_qdrant
 from app.services.splade_service import initialize_splade
+from app.services.bm25_search import initialize_bm25
+from app.services.memory_service import initialize_memory_backend, close_memory_backend
 from app.external.neo4j_client import initialize_neo4j, close_neo4j
-from app.external.redis_client import initialize_redis, close_redis
 
 # 로깅 설정
 logging.basicConfig(
@@ -37,8 +38,12 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Qdrant + SPLADE 서비스 초기화 완료")
         else:
             logger.warning("⚠️ Qdrant/SPLADE 초기화 실패, PGVector + BM25로 폴백")
+            # BM25 인덱스 미리 초기화 (검색 시 동시성 문제 방지)
+            await initialize_bm25()
     else:
         logger.info("📊 PGVector + BM25 모드 사용")
+        # BM25 인덱스 미리 초기화 (검색 시 동시성 문제 방지)
+        await initialize_bm25()
 
     # Neo4j 그래프 DB 초기화 (활성화된 경우)
     if settings.ENABLE_NEO4J:
@@ -49,20 +54,22 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("⚠️ Neo4j 초기화 실패, 그래프 기능 비활성화")
 
-    # Redis 메모리 서비스 초기화
+    # 메모리 서비스 초기화 (Redis 또는 DuckDB)
     if settings.ENABLE_MEMORY:
-        logger.info("🔧 Redis 메모리 서비스 초기화 중...")
-        redis_ok = await initialize_redis()
-        if redis_ok:
-            logger.info("✅ Redis 메모리 서비스 초기화 완료")
+        logger.info(f"🔧 메모리 서비스 초기화 중... (백엔드: {settings.MEMORY_BACKEND})")
+        memory_ok = await initialize_memory_backend()
+        if memory_ok:
+            logger.info(f"✅ 메모리 서비스 초기화 완료 ({settings.MEMORY_BACKEND})")
+            if settings.ENABLE_PERSISTENT_MEMORY:
+                logger.info("💾 PostgreSQL 영구 저장 활성화됨")
         else:
-            logger.warning("⚠️ Redis 초기화 실패, 메모리 기능 비활성화")
+            logger.warning(f"⚠️ 메모리 서비스 초기화 실패 ({settings.MEMORY_BACKEND})")
 
     yield
     # 종료 시
     logger.info("👋 Medical RAG API 종료...")
     await close_neo4j()
-    await close_redis()
+    await close_memory_backend()
 
 
 def create_app() -> FastAPI:

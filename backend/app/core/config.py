@@ -17,9 +17,16 @@ class Settings(BaseSettings):
     # Database (SQLite for local development, PostgreSQL for production)
     DATABASE_URL: str = "sqlite+aiosqlite:///./medical_rag.db"
 
-    # Redis (Optional)
-    REDIS_URL: str = "redis://localhost:6379"
+    # Memory Backend Settings
+    MEMORY_BACKEND: str = "redis"  # "redis" or "duckdb"
     ENABLE_MEMORY: bool = True  # 대화 메모리 및 캐싱 기능
+    ENABLE_PERSISTENT_MEMORY: bool = True  # PostgreSQL 영구 저장 활성화
+
+    # Redis Settings (MEMORY_BACKEND="redis" 시 사용)
+    REDIS_URL: str = "redis://localhost:6379"
+
+    # DuckDB Settings (MEMORY_BACKEND="duckdb" 시 사용)
+    DUCKDB_PATH: str = "./data/memory.duckdb"  # DuckDB 파일 경로
 
     # Security
     SECRET_KEY: str = "dev-secret-key-change-in-production"

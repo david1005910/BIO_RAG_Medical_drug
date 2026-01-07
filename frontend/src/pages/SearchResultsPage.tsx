@@ -2,7 +2,7 @@
  * 검색 결과 페이지
  */
 
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock } from 'lucide-react'
 import SearchForm from '../components/search/SearchForm'
@@ -43,14 +43,8 @@ export default function SearchResultsPage() {
   const isPending = isSearchPending || isChatPending
   const error = searchError || chatError
 
-  useEffect(() => {
-    // 쿼리가 있고, 유효한 캐시가 없을 때만 검색 실행
-    if (query && !isValidCache(query)) {
-      handleSearch(query)
-    }
-  }, [query])
-
-  const handleSearch = (newQuery: string) => {
+  // 검색 함수 (useCallback으로 의존성 관리)
+  const handleSearch = useCallback((newQuery: string) => {
     if (isMemoryEnabled) {
       // 메모리 활성화: Chat API 사용
       chat(
@@ -69,16 +63,16 @@ export default function SearchResultsPage() {
                 results: data.sources.map((source) => ({
                   id: source.id,
                   item_name: source.name,
-                  entp_name: null,
-                  efficacy: null,
+                  entp_name: source.entp_name || null,
+                  efficacy: source.efficacy || null,
                   use_method: null,
                   caution_info: null,
                   side_effects: null,
                   similarity: source.similarity,
-                  dense_score: source.similarity,
-                  bm25_score: null,
-                  hybrid_score: source.similarity,
-                  relevance_score: source.similarity,
+                  dense_score: source.dense_score ?? null,
+                  bm25_score: source.bm25_score ?? null,
+                  hybrid_score: source.hybrid_score ?? null,
+                  relevance_score: source.relevance_score ?? null,
                 })),
                 ai_response: data.message,
                 disclaimer: data.disclaimer,
@@ -114,7 +108,14 @@ export default function SearchResultsPage() {
         }
       )
     }
-  }
+  }, [isMemoryEnabled, sessionId, chat, search, setSearchState, setConversationTurn, setLastFromCache])
+
+  // 쿼리 변경 시 검색 실행
+  useEffect(() => {
+    if (query && !isValidCache(query)) {
+      handleSearch(query)
+    }
+  }, [query, isValidCache, handleSearch])
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">

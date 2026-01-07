@@ -87,9 +87,9 @@ export default function DrugCard({ drug }: DrugCardProps) {
                 />
                 <ScoreText
                   label="SPLADE"
-                  score={drug.bm25_score !== null ? drug.bm25_score * 50 : null}
+                  score={drug.bm25_score !== null ? drug.bm25_score * 30 : null}
                   color="#22c55e"
-                  scale="0-50"
+                  scale="0-30"
                 />
                 <ScoreText
                   label="Hybrid"

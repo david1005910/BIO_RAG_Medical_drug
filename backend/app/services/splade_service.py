@@ -32,6 +32,7 @@ class SPLADEService:
         self.model_name = "BAAI/bge-m3"
         self.model = None
         self._initialized = False
+        self._load_failed = False  # 로딩 실패 플래그 (재시도 방지)
         self.max_score = settings.SPLADE_MAX_SCORE  # 정규화 기준
 
     async def initialize(self) -> bool:
@@ -42,6 +43,10 @@ class SPLADEService:
         """
         if self._initialized:
             return True
+
+        # 이미 로딩 실패한 경우 재시도하지 않음
+        if self._load_failed:
+            return False
 
         try:
             logger.info(f"🔧 BGE-M3 모델 로딩 중: {self.model_name}")
@@ -70,6 +75,7 @@ class SPLADEService:
         except Exception as e:
             logger.error(f"❌ BGE-M3 모델 로딩 실패: {e}")
             self._initialized = False
+            self._load_failed = True  # 재시도 방지
             return False
 
     async def encode(self, text: str) -> Dict[str, Any]:

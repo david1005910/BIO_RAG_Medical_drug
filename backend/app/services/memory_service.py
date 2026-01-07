@@ -1,13 +1,24 @@
-"""메모리 서비스 - 대화 히스토리 및 쿼리 캐싱"""
+"""메모리 서비스 - 대화 히스토리 및 쿼리 캐싱
+
+지원 백엔드:
+- Redis: 분산 캐시, 고성능 (기본값)
+- DuckDB: 파일 기반, 서버 불필요
+
+영구 저장:
+- PostgreSQL: 대화 히스토리 영구 보존 (선택적)
+"""
 import hashlib
 import json
 import logging
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from app.external.redis_client import RedisClient, get_redis_client
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
+from app.external.base_memory_client import BaseMemoryClient
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +65,13 @@ class MemoryService:
     2. 대화 히스토리 - 세션별 대화 기록 저장
     3. 중복 검색 판별 - 쿼리 해시로 중복 확인
     4. 컨텍스트 참조 - 이전 대화 참조하여 응답 생성
+    5. PostgreSQL 영구 저장 - 대화 히스토리 영구 보존
+
+    백엔드:
+    - Redis 또는 DuckDB (MEMORY_BACKEND 설정)
     """
 
-    # Redis 키 프리픽스
+    # 키 프리픽스
     CACHE_PREFIX = "cache:query:"
     HISTORY_PREFIX = "history:"
     SESSION_PREFIX = "session:"
@@ -68,19 +83,38 @@ class MemoryService:
 
     def __init__(
         self,
-        client: Optional[RedisClient] = None,
+        client: Optional[BaseMemoryClient] = None,
         cache_ttl: int = DEFAULT_CACHE_TTL,
         history_ttl: int = DEFAULT_HISTORY_TTL,
         max_history: int = MAX_HISTORY_LENGTH,
     ):
-        self.client = client or get_redis_client()
+        self.client = client or self._get_default_client()
         self.cache_ttl = cache_ttl
         self.history_ttl = history_ttl
         self.max_history = max_history
+        self._backend_name = settings.MEMORY_BACKEND
+
+    def _get_default_client(self) -> BaseMemoryClient:
+        """설정에 따라 기본 클라이언트 반환"""
+        backend = settings.MEMORY_BACKEND.lower()
+
+        if backend == "duckdb":
+            from app.external.duckdb_client import get_duckdb_client
+            logger.info("📦 DuckDB 메모리 백엔드 사용")
+            return get_duckdb_client()
+        else:  # redis (default)
+            from app.external.redis_client import get_redis_client
+            logger.info("📦 Redis 메모리 백엔드 사용")
+            return get_redis_client()
 
     def is_enabled(self) -> bool:
         """메모리 서비스 활성화 여부"""
-        return self.client.is_enabled()
+        return self.client.is_enabled
+
+    @property
+    def backend_name(self) -> str:
+        """현재 백엔드 이름"""
+        return self._backend_name
 
     # ==================== 쿼리 해싱 ====================
 
@@ -178,6 +212,7 @@ class MemoryService:
         query: str,
         response: str,
         sources: List[Dict[str, Any]],
+        db_session: Optional[AsyncSession] = None,
     ) -> bool:
         """대화 히스토리에 추가
 
@@ -186,6 +221,7 @@ class MemoryService:
             query: 사용자 쿼리
             response: AI 응답
             sources: 참조 소스 목록
+            db_session: PostgreSQL 세션 (영구 저장용)
 
         Returns:
             성공 여부
@@ -203,7 +239,7 @@ class MemoryService:
             query_hash=self.hash_query(query),
         )
 
-        # 리스트에 추가
+        # 캐시에 저장 (Redis/DuckDB)
         success = await self.client.rpush(history_key, json.dumps(turn.to_dict(), ensure_ascii=False))
         if not success:
             return False
@@ -216,8 +252,58 @@ class MemoryService:
         # TTL 갱신
         await self.client.expire(history_key, self.history_ttl)
 
+        # PostgreSQL 영구 저장 (활성화된 경우)
+        if settings.ENABLE_PERSISTENT_MEMORY and db_session:
+            await self._persist_conversation(db_session, session_id, turn, length)
+
         logger.info(f"📝 히스토리 추가: session={session_id}, turns={min(length, self.max_history)}")
         return True
+
+    async def _persist_conversation(
+        self,
+        db_session: AsyncSession,
+        session_id: str,
+        turn: ConversationTurn,
+        turn_number: int,
+    ) -> None:
+        """PostgreSQL에 대화 영구 저장
+
+        Args:
+            db_session: DB 세션
+            session_id: 세션 ID
+            turn: 대화 턴
+            turn_number: 턴 번호
+        """
+        try:
+            from app.models.conversation import Session, ConversationHistory
+
+            # 세션 확인/생성
+            result = await db_session.execute(
+                select(Session).where(Session.id == session_id)
+            )
+            session = result.scalar_one_or_none()
+
+            if not session:
+                session = Session(id=session_id)
+                db_session.add(session)
+
+            # 대화 기록 저장
+            conv = ConversationHistory(
+                session_id=session_id,
+                turn_number=turn_number,
+                query=turn.query,
+                query_hash=turn.query_hash,
+                response=turn.response,
+                sources=turn.sources,
+                from_cache=False,
+            )
+            db_session.add(conv)
+            await db_session.commit()
+
+            logger.debug(f"💾 PostgreSQL 영구 저장: session={session_id}, turn={turn_number}")
+        except Exception as e:
+            logger.error(f"PostgreSQL 영구 저장 실패: {e}")
+            await db_session.rollback()
 
     async def get_history(
         self,
@@ -254,6 +340,47 @@ class MemoryService:
                 continue
 
         return turns
+
+    async def get_persistent_history(
+        self,
+        session_id: str,
+        db_session: AsyncSession,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """PostgreSQL에서 영구 저장된 히스토리 조회
+
+        Args:
+            session_id: 세션 ID
+            db_session: DB 세션
+            limit: 최대 조회 수
+
+        Returns:
+            대화 기록 목록
+        """
+        try:
+            from app.models.conversation import ConversationHistory
+
+            result = await db_session.execute(
+                select(ConversationHistory)
+                .where(ConversationHistory.session_id == session_id)
+                .order_by(ConversationHistory.turn_number)
+                .limit(limit)
+            )
+            records = result.scalars().all()
+
+            return [
+                {
+                    "turn_number": r.turn_number,
+                    "query": r.query,
+                    "response": r.response,
+                    "sources": r.sources,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in records
+            ]
+        except Exception as e:
+            logger.error(f"PostgreSQL 히스토리 조회 실패: {e}")
+            return []
 
     async def get_recent_context(
         self,
@@ -299,12 +426,18 @@ class MemoryService:
 
     # ==================== 세션 관리 ====================
 
-    async def create_session(self, session_id: str, metadata: Optional[Dict] = None) -> bool:
+    async def create_session(
+        self,
+        session_id: str,
+        metadata: Optional[Dict] = None,
+        db_session: Optional[AsyncSession] = None,
+    ) -> bool:
         """세션 생성
 
         Args:
             session_id: 세션 ID
             metadata: 세션 메타데이터
+            db_session: PostgreSQL 세션 (영구 저장용)
 
         Returns:
             성공 여부
@@ -319,7 +452,41 @@ class MemoryService:
             **(metadata or {}),
         }
 
-        return await self.client.set_json(session_key, session_data, self.history_ttl)
+        success = await self.client.set_json(session_key, session_data, self.history_ttl)
+
+        # PostgreSQL 영구 저장
+        if settings.ENABLE_PERSISTENT_MEMORY and db_session:
+            await self._persist_session(db_session, session_id, metadata)
+
+        return success
+
+    async def _persist_session(
+        self,
+        db_session: AsyncSession,
+        session_id: str,
+        metadata: Optional[Dict] = None,
+    ) -> None:
+        """PostgreSQL에 세션 영구 저장"""
+        try:
+            from app.models.conversation import Session
+
+            # 기존 세션 확인
+            result = await db_session.execute(
+                select(Session).where(Session.id == session_id)
+            )
+            existing = result.scalar_one_or_none()
+
+            if not existing:
+                session = Session(
+                    id=session_id,
+                    metadata_=metadata,
+                )
+                db_session.add(session)
+                await db_session.commit()
+                logger.debug(f"💾 PostgreSQL 세션 저장: {session_id}")
+        except Exception as e:
+            logger.error(f"PostgreSQL 세션 저장 실패: {e}")
+            await db_session.rollback()
 
     async def update_session_activity(self, session_id: str) -> bool:
         """세션 활동 시간 갱신
@@ -363,9 +530,11 @@ class MemoryService:
         """메모리 서비스 통계"""
         return {
             "enabled": self.is_enabled(),
+            "backend": self._backend_name,
             "cache_ttl": self.cache_ttl,
             "history_ttl": self.history_ttl,
             "max_history": self.max_history,
+            "persistent_enabled": settings.ENABLE_PERSISTENT_MEMORY,
         }
 
 
@@ -379,3 +548,47 @@ def get_memory_service() -> MemoryService:
     if _memory_service is None:
         _memory_service = MemoryService()
     return _memory_service
+
+
+async def initialize_memory_backend() -> bool:
+    """메모리 백엔드 초기화
+
+    Returns:
+        초기화 성공 여부
+    """
+    if not settings.ENABLE_MEMORY:
+        logger.info("⚠️ 메모리 기능 비활성화됨 (ENABLE_MEMORY=false)")
+        return False
+
+    backend = settings.MEMORY_BACKEND.lower()
+
+    if backend == "duckdb":
+        from app.external.duckdb_client import initialize_duckdb
+        logger.info("🔧 DuckDB 메모리 백엔드 초기화 중...")
+        success = await initialize_duckdb()
+        if success:
+            logger.info("✅ DuckDB 메모리 백엔드 초기화 완료")
+        return success
+    else:  # redis (default)
+        from app.external.redis_client import initialize_redis
+        logger.info("🔧 Redis 메모리 백엔드 초기화 중...")
+        success = await initialize_redis()
+        if success:
+            logger.info("✅ Redis 메모리 백엔드 초기화 완료")
+        return success
+
+
+async def close_memory_backend() -> None:
+    """메모리 백엔드 종료"""
+    global _memory_service
+
+    backend = settings.MEMORY_BACKEND.lower()
+
+    if backend == "duckdb":
+        from app.external.duckdb_client import close_duckdb
+        await close_duckdb()
+    else:  # redis
+        from app.external.redis_client import close_redis
+        await close_redis()
+
+    _memory_service = None

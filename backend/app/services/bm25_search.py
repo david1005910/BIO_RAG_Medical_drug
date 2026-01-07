@@ -1,4 +1,5 @@
 """BM25 검색 서비스 - Sparse Search 구현"""
+import asyncio
 import logging
 import re
 from typing import Dict, List, Optional, Tuple
@@ -82,20 +83,81 @@ class KoreanTokenizer:
         return ngrams
 
 
+class BM25IndexCache:
+    """BM25 인덱스 전역 캐시 (싱글톤)"""
+
+    _instance = None
+    _initialized = False
+    _init_lock = None  # asyncio lock for initialization
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.bm25 = None
+            cls._instance.documents = []
+            cls._instance.corpus = []
+            cls._instance.tokenizer = KoreanTokenizer()
+            cls._instance._init_lock = asyncio.Lock()
+        return cls._instance
+
+    @property
+    def is_initialized(self):
+        return self._initialized and self.bm25 is not None
+
+    @property
+    def lock(self):
+        """초기화 락 반환 (동시 초기화 방지)"""
+        if self._init_lock is None:
+            self._init_lock = asyncio.Lock()
+        return self._init_lock
+
+    def set_data(self, bm25, documents, corpus):
+        self.bm25 = bm25
+        self.documents = documents
+        self.corpus = corpus
+        self._initialized = True
+
+    def clear(self):
+        self.bm25 = None
+        self.documents = []
+        self.corpus = []
+        self._initialized = False
+
+
+# 전역 캐시 인스턴스
+_bm25_cache = BM25IndexCache()
+
+
 class BM25SearchService:
     """BM25 기반 Sparse 검색 서비스"""
 
     def __init__(self, session: AsyncSession):
         self.session = session
-        self.tokenizer = KoreanTokenizer()
-        self.bm25: Optional[BM25Okapi] = None
-        self.documents: List[Dict] = []
-        self.corpus: List[List[str]] = []
-        self._initialized = False
+        self.cache = _bm25_cache
+
+    @property
+    def tokenizer(self):
+        return self.cache.tokenizer
+
+    @property
+    def bm25(self):
+        return self.cache.bm25
+
+    @property
+    def documents(self):
+        return self.cache.documents
+
+    @property
+    def corpus(self):
+        return self.cache.corpus
+
+    @property
+    def _initialized(self):
+        return self.cache.is_initialized
 
     async def initialize(self) -> None:
         """BM25 인덱스 초기화 - 모든 의약품 문서 로드"""
-        if self._initialized:
+        if self.cache.is_initialized:
             return
 
         logger.info("🔧 BM25 인덱스 초기화 중...")
@@ -117,8 +179,8 @@ class BM25SearchService:
         result = await self.session.execute(query)
         rows = result.fetchall()
 
-        self.documents = []
-        self.corpus = []
+        documents = []
+        corpus = []
 
         for row in rows:
             # 문서 생성 (검색 대상 텍스트)
@@ -133,7 +195,7 @@ class BM25SearchService:
             tokens = self.tokenizer.tokenize(doc_text)
 
             if tokens:
-                self.documents.append({
+                documents.append({
                     "drug_id": row.drug_id,
                     "item_name": row.item_name,
                     "entp_name": row.entp_name,
@@ -142,13 +204,13 @@ class BM25SearchService:
                     "caution_info": row.caution_info,
                     "side_effects": row.side_effects,
                 })
-                self.corpus.append(tokens)
+                corpus.append(tokens)
 
-        # BM25 인덱스 생성
-        if self.corpus:
-            self.bm25 = BM25Okapi(self.corpus)
-            self._initialized = True
-            logger.info(f"✅ BM25 인덱스 생성 완료: {len(self.documents)}개 문서")
+        # BM25 인덱스 생성 및 캐시에 저장
+        if corpus:
+            bm25 = BM25Okapi(corpus)
+            self.cache.set_data(bm25, documents, corpus)
+            logger.info(f"✅ BM25 인덱스 생성 완료: {len(documents)}개 문서")
         else:
             logger.warning("⚠️ BM25 인덱스 생성 실패: 문서 없음")
 
@@ -218,10 +280,7 @@ class BM25SearchService:
 
     async def refresh_index(self) -> None:
         """인덱스 새로고침"""
-        self._initialized = False
-        self.bm25 = None
-        self.documents = []
-        self.corpus = []
+        self.cache.clear()
         await self.initialize()
 
 
@@ -230,13 +289,12 @@ class HybridSearchService:
 
     점수 체계:
     - Dense Score: 0~1 (코사인 유사도)
-    - Sparse Score: 0~50 기준으로 0~1로 정규화 (50으로 나눔, 최대 1)
+    - Sparse Score: 0~30 기준으로 0~1로 정규화 (30으로 나눔, 최대 1)
     - Hybrid Score: dense * 0.7 + sparse * 0.3
     """
 
     # BM25 점수 정규화 기준 (최대 점수)
-    # 실제 테스트 결과 raw BM25 점수가 32-35 범위이므로 50으로 설정
-    BM25_MAX_SCORE = 50.0
+    BM25_MAX_SCORE = 30.0
 
     def __init__(
         self,
@@ -254,10 +312,10 @@ class HybridSearchService:
         await self.bm25_service.initialize()
 
     def _normalize_bm25_score(self, score: float) -> float:
-        """BM25 점수를 0-1 범위로 정규화 (50점 기준)
+        """BM25 점수를 0-1 범위로 정규화 (30점 기준)
 
         Args:
-            score: 원본 BM25 점수 (일반적으로 0~50 범위)
+            score: 원본 BM25 점수
 
         Returns:
             0~1 범위로 정규화된 점수
@@ -367,3 +425,29 @@ def get_hybrid_service(
         HybridSearchService 인스턴스
     """
     return HybridSearchService(session, dense_weight, sparse_weight)
+
+
+async def initialize_bm25() -> bool:
+    """서버 시작 시 BM25 인덱스 초기화 (별도 세션 사용)
+
+    Returns:
+        초기화 성공 여부
+    """
+    if _bm25_cache.is_initialized:
+        logger.info("✅ BM25 인덱스 이미 초기화됨")
+        return True
+
+    try:
+        from app.db.session import async_session_maker
+
+        logger.info("🔧 BM25 인덱스 시작 시 초기화 중...")
+
+        async with async_session_maker() as session:
+            bm25_service = BM25SearchService(session)
+            await bm25_service.initialize()
+
+        return _bm25_cache.is_initialized
+
+    except Exception as e:
+        logger.error(f"❌ BM25 인덱스 초기화 실패: {e}")
+        return False

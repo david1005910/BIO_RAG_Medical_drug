@@ -166,6 +166,7 @@ class RAGEngine:
         top_k: int = 5,
         use_reranking: bool = True,
         use_hybrid: bool = True,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[SearchResult]:
         """증상 기반 의약품 검색 (LLM 응답 없음)
 
@@ -178,6 +179,7 @@ class RAGEngine:
             top_k: 반환할 결과 수
             use_reranking: Cohere reranking 사용 여부
             use_hybrid: Hybrid Search (Dense + Sparse) 사용 여부
+            query_embedding: 사전 계산된 쿼리 임베딩 (재사용용)
 
         Returns:
             유사도/관련성 순으로 정렬된 검색 결과
@@ -195,6 +197,7 @@ class RAGEngine:
                 query=query,
                 top_k=initial_top_k,
                 use_hybrid=use_hybrid,
+                query_embedding=query_embedding,
             )
         else:
             # 기존 PGVector + BM25 모드
@@ -202,6 +205,7 @@ class RAGEngine:
                 query=query,
                 top_k=initial_top_k,
                 use_hybrid=use_hybrid,
+                query_embedding=query_embedding,
             )
 
         # Cohere Reranking (활성화된 경우)
@@ -255,6 +259,7 @@ class RAGEngine:
         query: str,
         top_k: int,
         use_hybrid: bool = True,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[Dict]:
         """Qdrant + SPLADE 하이브리드 검색
 
@@ -262,13 +267,15 @@ class RAGEngine:
             query: 검색 쿼리
             top_k: 반환할 결과 수
             use_hybrid: 하이브리드 검색 사용 여부
+            query_embedding: 사전 계산된 쿼리 임베딩
 
         Returns:
             검색 결과 딕셔너리 리스트
         """
         try:
-            # 1. 쿼리 임베딩 (Dense)
-            query_embedding = await self.embedding_service.embed_text(query)
+            # 1. 쿼리 임베딩 (Dense) - 제공되지 않은 경우에만 생성
+            if query_embedding is None:
+                query_embedding = await self.embedding_service.embed_text(query)
 
             if use_hybrid:
                 # 2. SPLADE 임베딩 (Sparse)
@@ -277,7 +284,7 @@ class RAGEngine:
                 # SPLADE가 빈 벡터를 반환하면 PGVector+BM25로 폴백
                 if not sparse_vector.get("indices") or not sparse_vector.get("values"):
                     logger.warning("⚠️ SPLADE 빈 벡터 반환, PGVector+BM25로 폴백")
-                    return await self._search_with_pgvector(query, top_k, use_hybrid)
+                    return await self._search_with_pgvector(query, top_k, use_hybrid, query_embedding)
 
                 # 3. Qdrant 하이브리드 검색
                 qdrant_results = await self.qdrant_service.hybrid_search(
@@ -321,13 +328,14 @@ class RAGEngine:
         except Exception as e:
             logger.warning(f"⚠️ Qdrant 검색 실패, PGVector로 폴백: {e}")
             # 폴백: 기존 PGVector + BM25 사용
-            return await self._search_with_pgvector(query, top_k, use_hybrid)
+            return await self._search_with_pgvector(query, top_k, use_hybrid, query_embedding)
 
     async def _search_with_pgvector(
         self,
         query: str,
         top_k: int,
         use_hybrid: bool = True,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[Dict]:
         """PGVector + BM25 하이브리드 검색 (기존 방식)
 
@@ -335,12 +343,14 @@ class RAGEngine:
             query: 검색 쿼리
             top_k: 반환할 결과 수
             use_hybrid: 하이브리드 검색 사용 여부
+            query_embedding: 사전 계산된 쿼리 임베딩
 
         Returns:
             검색 결과 딕셔너리 리스트
         """
-        # 1. 쿼리 임베딩
-        query_embedding = await self.embedding_service.embed_text(query)
+        # 1. 쿼리 임베딩 - 제공되지 않은 경우에만 생성
+        if query_embedding is None:
+            query_embedding = await self.embedding_service.embed_text(query)
 
         # 2. 벡터 유사도 검색 (Dense Search)
         dense_results = await self.vector_db.search_similar(query_embedding, top_k)
@@ -377,6 +387,7 @@ class RAGEngine:
         query: str,
         top_k: int = 3,
         use_reranking: bool = True,
+        query_embedding: Optional[List[float]] = None,
     ) -> List[DiseaseResult]:
         """증상 기반 질병 검색
 
@@ -384,14 +395,16 @@ class RAGEngine:
             query: 사용자 증상 설명
             top_k: 반환할 결과 수
             use_reranking: Cohere reranking 사용 여부
+            query_embedding: 사전 계산된 쿼리 임베딩
 
         Returns:
             유사도/관련성 순으로 정렬된 질병 결과
         """
         logger.info(f"🏥 질병 검색 쿼리: {query[:50]}...")
 
-        # 쿼리 임베딩 (약품 검색과 동일한 임베딩 사용)
-        query_embedding = await self.embedding_service.embed_text(query)
+        # 쿼리 임베딩 - 제공되지 않은 경우에만 생성
+        if query_embedding is None:
+            query_embedding = await self.embedding_service.embed_text(query)
 
         # 질병 벡터 검색
         initial_top_k = top_k * 2 if (use_reranking and self.reranker.is_enabled()) else top_k
@@ -449,14 +462,16 @@ class RAGEngine:
         Returns:
             검색 결과 + 질병 정보 + 그래프 정보 + AI 생성 응답
         """
-        # 1. 의약품 검색 + 질병 검색 (병렬 실행으로 속도 향상)
+        # 1. 쿼리 임베딩 생성 (한 번만 - 검색 최적화)
+        query_embedding = await self.embedding_service.embed_text(query)
+
+        # 2. 의약품 검색 + 질병 검색 (순차 실행 - 세션 동시성 문제 방지)
+        # Note: 같은 DB 세션을 사용하므로 병렬 실행 시 SQLAlchemy 세션 충돌 발생
+        drug_results = await self.search(query, top_k, query_embedding=query_embedding)
+
         if include_diseases:
-            drug_results, disease_results = await asyncio.gather(
-                self.search(query, top_k),
-                self.search_diseases(query, top_k=2),
-            )
+            disease_results = await self.search_diseases(query, top_k=2, query_embedding=query_embedding)
         else:
-            drug_results = await self.search(query, top_k)
             disease_results = []
 
         if not drug_results and not disease_results:
@@ -466,7 +481,7 @@ class RAGEngine:
                 ai_response="죄송합니다. 관련 정보를 찾을 수 없습니다. 다른 증상으로 검색해 보시거나, 약사/의사와 상담하세요.",
             )
 
-        # 2. 그래프 강화 데이터 조회 (활성화된 경우)
+        # 3. 그래프 강화 데이터 조회 (활성화된 경우)
         graph_data = None
         graph_context = ""
         if include_graph and self.enable_neo4j:
@@ -474,7 +489,7 @@ class RAGEngine:
             graph_data = await self._get_graph_enhancement(drug_ids)
             graph_context = self._format_graph_context(graph_data)
 
-        # 3. 통합 컨텍스트 구성
+        # 4. 통합 컨텍스트 구성
         context = self.llm_service.format_integrated_context(
             drug_results=[
                 {
@@ -510,7 +525,7 @@ class RAGEngine:
         if graph_context:
             context += graph_context
 
-        # 4. LLM 응답 생성
+        # 5. LLM 응답 생성
         try:
             ai_response = await self.llm_service.generate_integrated_response(query, context)
         except Exception as e:

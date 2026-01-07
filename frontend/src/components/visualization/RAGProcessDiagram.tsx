@@ -111,10 +111,10 @@ const processSteps: ProcessStep[] = [
     details: [
       'SPLADE: 신경망 기반 희소 벡터',
       '키워드 확장 및 가중치 학습',
-      '0~50점 기준 정규화 (0~1)',
+      '0~30점 기준 정규화 (0~1)',
     ],
     metrics: [
-      { label: 'SPLADE Score', value: '0~50 → 0~1' },
+      { label: 'SPLADE Score', value: '0~30 → 0~1' },
       { label: '가중치', value: '30%' },
     ],
   },
@@ -703,8 +703,8 @@ export default function RAGProcessDiagram({
                             <div className="flex items-center justify-between">
                               <span className="text-orange-300 text-sm">현재 SPLADE Score:</span>
                               <span className="text-orange-200 font-bold text-lg">
-                                {((scores.bm25_score ?? 0) * 50).toFixed(2)}
-                                <span className="text-xs text-orange-400 ml-1">(0-50)</span>
+                                {((scores.bm25_score ?? 0) * 30).toFixed(2)}
+                                <span className="text-xs text-orange-400 ml-1">(0-30)</span>
                               </span>
                             </div>
                           </div>

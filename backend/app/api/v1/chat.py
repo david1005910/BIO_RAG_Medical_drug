@@ -89,12 +89,18 @@ async def chat_with_rag(
             top_k=request.top_k,
         )
 
-        # 참조 의약품 목록
+        # 참조 의약품 목록 (점수 정보 포함)
         sources = [
             {
                 "id": r.drug_id,
                 "name": r.item_name,
-                "similarity": round(r.similarity, 2),
+                "entp_name": r.entp_name,
+                "efficacy": r.efficacy,
+                "similarity": round(r.similarity, 4),
+                "dense_score": round(r.dense_score, 4) if r.dense_score is not None else None,
+                "bm25_score": round(r.bm25_score, 4) if r.bm25_score is not None else None,
+                "hybrid_score": round(r.hybrid_score, 4) if r.hybrid_score is not None else None,
+                "relevance_score": round(r.relevance_score, 4) if r.relevance_score is not None else None,
             }
             for r in response.results
         ]

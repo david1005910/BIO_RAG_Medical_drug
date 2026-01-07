@@ -51,7 +51,13 @@ export interface ChatRequest {
 export interface ChatSource {
   id: string
   name: string
+  entp_name?: string | null
+  efficacy?: string | null
   similarity: number
+  dense_score?: number | null
+  bm25_score?: number | null
+  hybrid_score?: number | null
+  relevance_score?: number | null
 }
 
 export interface ChatResponse {
