@@ -2,8 +2,8 @@
 import logging
 from typing import List, Optional
 
-from app.external.openai_client import OpenAIClient
 from app.core.config import settings
+from app.external.openai_client import OpenAIClient
 
 logger = logging.getLogger(__name__)
 

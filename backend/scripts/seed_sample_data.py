@@ -6,10 +6,11 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select
-from app.models.drug import Drug
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
 from app.db.base import Base
+from app.models.drug import Drug
 
 # Sample drug data for testing (field names match Drug model)
 SAMPLE_DRUGS = [

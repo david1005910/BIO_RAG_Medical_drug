@@ -1,7 +1,6 @@
 """Neo4j 그래프 서비스 - 노드 및 관계 관리"""
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.external.neo4j_client import Neo4jClient, get_neo4j_client

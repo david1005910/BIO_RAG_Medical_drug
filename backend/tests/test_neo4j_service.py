@@ -1,12 +1,10 @@
 """Neo4j 서비스 테스트"""
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.neo4j_service import (
     Neo4jService,
-    DrugInteraction,
-    RelatedDrug,
-    GraphData,
 )
 
 

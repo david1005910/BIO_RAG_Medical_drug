@@ -10,9 +10,9 @@ Docling: IBM Research의 문서 파싱 라이브러리
 """
 import logging
 import os
-from pathlib import Path
-from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 

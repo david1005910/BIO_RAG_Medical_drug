@@ -1,5 +1,5 @@
 """Common API response schemas"""
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 

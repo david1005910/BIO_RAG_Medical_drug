@@ -1,9 +1,7 @@
 """Service layer tests"""
-import pytest
-from unittest.mock import AsyncMock, patch
 
-from app.services.data_preprocessor import DrugDataPreprocessor
 from app.external.data_go_kr import DrugInfo
+from app.services.data_preprocessor import DrugDataPreprocessor
 
 
 class TestDrugDataPreprocessor:

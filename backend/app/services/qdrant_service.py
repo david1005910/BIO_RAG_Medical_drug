@@ -1,23 +1,16 @@
 """Qdrant 벡터 데이터베이스 서비스 - Dense + Sparse Hybrid Search 지원"""
 import logging
 import uuid
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 from qdrant_client import QdrantClient
-from qdrant_client.http import models
 from qdrant_client.http.models import (
     Distance,
-    VectorParams,
-    SparseVectorParams,
     PointStruct,
     SparseVector,
-    SearchRequest,
-    NamedVector,
-    NamedSparseVector,
-    Filter,
-    FieldCondition,
-    MatchValue,
+    SparseVectorParams,
+    VectorParams,
 )
 
 from app.core.config import settings
@@ -124,7 +117,7 @@ class QdrantService:
 
             logger.info(f"✅ 컬렉션 생성 완료: {self.collection_name}")
             logger.info(f"   - Dense 벡터: {dense_dim}차원, Cosine Distance")
-            logger.info(f"   - Sparse 벡터: SPLADE")
+            logger.info("   - Sparse 벡터: SPLADE")
             return True
 
         except Exception as e:

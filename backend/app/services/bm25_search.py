@@ -2,8 +2,7 @@
 import asyncio
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
-from functools import lru_cache
+from typing import Dict, List, Optional
 
 from rank_bm25 import BM25Okapi
 from sqlalchemy import text

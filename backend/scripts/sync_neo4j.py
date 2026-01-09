@@ -8,14 +8,13 @@ from typing import List, Set, Tuple
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models.drug import Drug
-from app.models.disease import Disease
 from app.external.neo4j_client import Neo4jClient
+from app.models.disease import Disease
+from app.models.drug import Drug
 from app.services.neo4j_service import Neo4jService
-
 
 # 증상 키워드 (efficacy 필드에서 추출)
 SYMPTOM_KEYWORDS = [

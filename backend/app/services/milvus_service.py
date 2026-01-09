@@ -5,13 +5,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from pymilvus import (
-    Collection,
-    CollectionSchema,
     DataType,
-    FieldSchema,
     MilvusClient,
-    connections,
-    utility,
 )
 
 from app.core.config import settings
@@ -200,7 +195,7 @@ class MilvusService:
 
             logger.info(f"✅ 컬렉션 생성 완료: {self.collection_name}")
             logger.info(f"   - Dense 벡터: {dense_dim}차원, HNSW, Cosine")
-            logger.info(f"   - Sparse 벡터: SPARSE_INVERTED_INDEX, IP")
+            logger.info("   - Sparse 벡터: SPARSE_INVERTED_INDEX, IP")
             return True
 
         except Exception as e:

@@ -4,14 +4,20 @@ PostgreSQL에 대화 히스토리를 영구 저장하기 위한 모델.
 Redis/DuckDB의 임시 캐시와 함께 사용하여 영구 저장 기능 제공.
 """
 from datetime import datetime
-from typing import Optional, List
 from uuid import uuid4
 
 from sqlalchemy import (
-    Column, String, Text, DateTime, Integer, Float,
-    JSON, Index, ForeignKey, Boolean
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base

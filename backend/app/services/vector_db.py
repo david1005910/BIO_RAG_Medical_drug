@@ -1,7 +1,6 @@
 """벡터 데이터베이스 서비스 - PGVector 연동"""
 import logging
-from typing import Dict, List, Optional
-from uuid import UUID
+from typing import Dict, List
 
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession

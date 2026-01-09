@@ -1,8 +1,8 @@
 """SQLAlchemy models"""
-from app.models.drug import Drug, DrugVector
+from app.models.conversation import CachedQuery, ConversationHistory, Session
 from app.models.disease import Disease, DiseaseVector
+from app.models.drug import Drug, DrugVector
 from app.models.search_log import SearchLog
-from app.models.conversation import Session, ConversationHistory, CachedQuery
 
 __all__ = [
     "Drug", "DrugVector",

@@ -2,8 +2,8 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from neo4j import AsyncGraphDatabase, AsyncDriver
-from neo4j.exceptions import ServiceUnavailable, AuthError
+from neo4j import AsyncDriver, AsyncGraphDatabase
+from neo4j.exceptions import AuthError, ServiceUnavailable
 
 from app.core.config import settings
 

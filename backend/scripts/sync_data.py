@@ -12,8 +12,8 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.session import async_session_maker
 from app.db.init_db import init_db
+from app.db.session import async_session_maker
 from app.services.data_sync import DataSyncService
 
 logging.basicConfig(

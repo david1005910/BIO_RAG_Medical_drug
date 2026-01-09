@@ -9,7 +9,6 @@
 - Sparse Score: 0~1 (BGE-M3 SPLADE, 10점 기준 정규화)
 - Hybrid Score: dense * 0.7 + sparse * 0.3
 """
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -17,14 +16,14 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.services.embedding import get_embedding_service, EmbeddingService
-from app.services.vector_db import VectorDBService
+from app.external.cohere_client import CohereReranker, get_reranker
 from app.services.disease_vector_db import DiseaseVectorDBService
-from app.services.llm_service import get_llm_service, LLMService
-from app.services.milvus_service import get_milvus_service, MilvusService
-from app.services.splade_service import get_splade_service, SPLADEService
-from app.external.cohere_client import get_reranker, CohereReranker
-from app.services.neo4j_service import get_neo4j_service, Neo4jService
+from app.services.embedding import EmbeddingService, get_embedding_service
+from app.services.llm_service import LLMService, get_llm_service
+from app.services.milvus_service import MilvusService, get_milvus_service
+from app.services.neo4j_service import Neo4jService, get_neo4j_service
+from app.services.splade_service import SPLADEService, get_splade_service
+from app.services.vector_db import VectorDBService
 
 logger = logging.getLogger(__name__)
 

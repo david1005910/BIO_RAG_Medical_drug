@@ -5,18 +5,18 @@
 import json
 import logging
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from typing import List
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from pgvector.sqlalchemy import Vector
 
 from app.api.deps import get_db
 from app.core.config import settings
-from app.services.document_service import get_document_service, ParsedDocument
-from app.services.embedding import get_embedding_service
 from app.models.drug import DocumentVector
+from app.services.document_service import get_document_service
+from app.services.embedding import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -303,7 +303,6 @@ async def search_documents(
         query_embedding = await embedding_service.embed_text(query)
 
         # DocumentVector 테이블에서 유사도 검색
-        from sqlalchemy import text
 
         result = await session.execute(
             select(

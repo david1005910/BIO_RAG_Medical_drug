@@ -10,12 +10,11 @@ from pathlib import Path
 # 프로젝트 루트 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
-from app.models.disease import Disease, DiseaseVector
 from app.services.embedding import get_embedding_service
 
 # 샘플 질병 데이터 (국가건강정보포털 기반)

@@ -3,8 +3,8 @@ import asyncio
 
 from sqlalchemy import text
 
-from app.db.session import engine
 from app.db.base import Base
+from app.db.session import engine
 from app.models import drug, search_log  # noqa: F401 - Import models for table creation
 
 

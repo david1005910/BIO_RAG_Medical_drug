@@ -2,9 +2,9 @@
 
 Redis와 DuckDB 메모리 백엔드를 위한 공통 인터페이스 정의
 """
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 

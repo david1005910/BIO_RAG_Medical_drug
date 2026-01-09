@@ -1,6 +1,7 @@
 """대화형 RAG API 엔드포인트 (메모리 기능 포함)"""
-import uuid
 import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,12 +9,12 @@ from app.api.deps import get_db
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
-    ConversationHistoryResponse,
-    ConversationHistoryItem,
     ClearHistoryResponse,
+    ConversationHistoryItem,
+    ConversationHistoryResponse,
 )
+from app.services.memory_service import MemoryService, get_memory_service
 from app.services.rag_engine import RAGEngine
-from app.services.memory_service import get_memory_service, MemoryService
 
 logger = logging.getLogger(__name__)
 

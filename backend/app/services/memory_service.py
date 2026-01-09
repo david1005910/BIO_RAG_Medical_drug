@@ -10,11 +10,11 @@
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -275,7 +275,7 @@ class MemoryService:
             turn_number: 턴 번호
         """
         try:
-            from app.models.conversation import Session, ConversationHistory
+            from app.models.conversation import ConversationHistory, Session
 
             # 세션 확인/생성
             result = await db_session.execute(

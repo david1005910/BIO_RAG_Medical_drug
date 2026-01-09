@@ -5,9 +5,9 @@ BGE-M3는 100+ 언어를 지원하며, 한국어 sparse embedding이 정상 작�
 
 참고: https://huggingface.co/BAAI/bge-m3
 """
-import logging
-from typing import Dict, List, Optional, Any
 import asyncio
+import logging
+from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 
@@ -93,10 +93,10 @@ class SPLADEService:
             loop = asyncio.get_event_loop()
 
             def load_model():
-                from FlagEmbedding import BGEM3FlagModel
                 # use_fp16=True for faster inference (GPU only)
                 # CPU에서는 use_fp16=False 사용
                 import torch
+                from FlagEmbedding import BGEM3FlagModel
                 use_fp16 = torch.cuda.is_available()
                 model = BGEM3FlagModel(
                     self.model_name,
@@ -107,7 +107,7 @@ class SPLADEService:
             self.model = await loop.run_in_executor(None, load_model)
 
             self._initialized = True
-            logger.info(f"✅ BGE-M3 모델 로딩 완료 (한국어 지원)")
+            logger.info("✅ BGE-M3 모델 로딩 완료 (한국어 지원)")
             return True
 
         except Exception as e:

@@ -1,18 +1,18 @@
 """데이터 동기화 서비스 - API → DB → Vector Index (PGVector + Milvus)"""
 import logging
-from typing import List, Optional
+from typing import List
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.external.data_go_kr import DataGoKrClient, DrugInfo
+from app.core.config import settings
+from app.external.data_go_kr import DataGoKrClient
 from app.models.drug import Drug
 from app.services.data_preprocessor import DrugDataPreprocessor
 from app.services.embedding import get_embedding_service
-from app.services.vector_db import VectorDBService
 from app.services.milvus_service import get_milvus_service
 from app.services.splade_service import get_splade_service
-from app.core.config import settings
+from app.services.vector_db import VectorDBService
 
 logger = logging.getLogger(__name__)
 

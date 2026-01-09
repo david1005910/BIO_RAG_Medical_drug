@@ -5,13 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import search, drugs, chat, admin, graph, documents
+from app.api.v1 import admin, chat, documents, drugs, graph, search
 from app.core.config import settings
+from app.external.neo4j_client import close_neo4j, initialize_neo4j
+from app.services.bm25_search import initialize_bm25
+from app.services.memory_service import close_memory_backend, initialize_memory_backend
 from app.services.milvus_service import initialize_milvus
 from app.services.splade_service import initialize_splade
-from app.services.bm25_search import initialize_bm25
-from app.services.memory_service import initialize_memory_backend, close_memory_backend
-from app.external.neo4j_client import initialize_neo4j, close_neo4j
 
 # 로깅 설정
 logging.basicConfig(

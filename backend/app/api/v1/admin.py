@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db
 from app.models.drug import Drug, DrugVector
 from app.services.data_sync import DataSyncService
-from app.services.vector_db import VectorDBService
 
 router = APIRouter()
 

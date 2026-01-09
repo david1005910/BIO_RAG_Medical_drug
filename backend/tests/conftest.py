@@ -5,13 +5,12 @@ from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.main import app
-from app.db.base import Base
 from app.api.deps import get_db  # This is the get_db used by API endpoints
+from app.main import app
+
 # Import models so they are registered with Base.metadata
 from app.models.drug import Drug, DrugVector  # noqa: F401
 

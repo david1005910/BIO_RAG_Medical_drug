@@ -1,24 +1,23 @@
 """검색 API 엔드포인트"""
-import time
-import random
 import math
-from typing import Optional, List
+import time
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.models.search_log import SearchLog
 from app.schemas.search import (
-    SearchRequest,
-    SearchResponse,
+    DiseaseResult,
+    DrugResult,
     SearchData,
     SearchMeta,
-    DrugResult,
-    DiseaseResult,
+    SearchRequest,
+    SearchResponse,
 )
 from app.services.rag_engine import RAGEngine
-from app.models.search_log import SearchLog
 
 router = APIRouter()
 

@@ -3,7 +3,6 @@ import logging
 from typing import Dict, List, Optional
 
 from app.external.openai_client import OpenAIClient
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
