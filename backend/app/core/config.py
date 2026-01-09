@@ -3,7 +3,7 @@ from functools import lru_cache
 from typing import List, Union
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -89,10 +89,11 @@ class Settings(BaseSettings):
     DOC_CHUNK_SIZE: int = 1000
     DOC_CHUNK_OVERLAP: int = 200
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()

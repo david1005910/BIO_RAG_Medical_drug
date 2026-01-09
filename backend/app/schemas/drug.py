@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DrugBase(BaseModel):
@@ -29,22 +29,20 @@ class DrugCreate(DrugBase):
 class DrugResponse(BaseModel):
     """Schema for drug list response"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     item_name: str
     entp_name: Optional[str]
     efficacy: Optional[str]
 
-    class Config:
-        from_attributes = True
-
 
 class DrugDetail(DrugBase):
     """Schema for detailed drug response"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: str
     data_source: str
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
