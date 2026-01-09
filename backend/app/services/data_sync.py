@@ -1,4 +1,4 @@
-"""데이터 동기화 서비스 - API → DB → Vector Index (PGVector + Qdrant)"""
+"""데이터 동기화 서비스 - API → DB → Vector Index (PGVector + Milvus)"""
 import logging
 from typing import List, Optional
 
@@ -10,7 +10,7 @@ from app.models.drug import Drug
 from app.services.data_preprocessor import DrugDataPreprocessor
 from app.services.embedding import get_embedding_service
 from app.services.vector_db import VectorDBService
-from app.services.qdrant_service import get_qdrant_service
+from app.services.milvus_service import get_milvus_service
 from app.services.splade_service import get_splade_service
 from app.core.config import settings
 
@@ -131,7 +131,7 @@ class DataSyncService:
         return saved_count
 
     async def _build_vectors(self, processed: List[dict]) -> int:
-        """벡터 인덱스 구축 (PGVector + Qdrant)"""
+        """벡터 인덱스 구축 (PGVector + Milvus)"""
         vector_db = VectorDBService(self.session)
 
         # 기존 벡터 삭제
@@ -156,27 +156,27 @@ class DataSyncService:
         ]
         pgvector_count = await vector_db.add_vectors_batch(vectors)
 
-        # Qdrant + SPLADE 인덱싱 (활성화된 경우)
-        if settings.ENABLE_QDRANT:
-            await self._build_qdrant_vectors(processed, embeddings)
+        # Milvus + SPLADE 인덱싱 (활성화된 경우)
+        if settings.ENABLE_MILVUS:
+            await self._build_milvus_vectors(processed, embeddings)
 
         return pgvector_count
 
-    async def _build_qdrant_vectors(
+    async def _build_milvus_vectors(
         self,
         processed: List[dict],
         dense_embeddings: List[List[float]],
     ) -> int:
-        """Qdrant 벡터 인덱스 구축 (Dense + Sparse)"""
+        """Milvus 벡터 인덱스 구축 (Dense + Sparse)"""
         import gc
         try:
-            qdrant_service = get_qdrant_service()
+            milvus_service = get_milvus_service()
             splade_service = get_splade_service()
 
-            # Qdrant 연결 확인
-            if not qdrant_service._initialized:
-                await qdrant_service.connect()
-                await qdrant_service.create_collection(recreate=True)
+            # Milvus 연결 확인
+            if not milvus_service._initialized:
+                await milvus_service.connect()
+                await milvus_service.create_collection(recreate=True)
 
             # SPLADE Sparse 임베딩 생성 (작은 배치로 메모리 절약)
             logger.info("🔧 SPLADE Sparse 임베딩 생성 중...")
@@ -184,8 +184,8 @@ class DataSyncService:
             sparse_embeddings = await splade_service.encode_batch(documents, batch_size=8)
             gc.collect()  # 메모리 정리
 
-            # Qdrant 문서 준비
-            qdrant_docs = [
+            # Milvus 문서 준비
+            milvus_docs = [
                 {
                     "drug_id": item["id"],
                     "item_name": item.get("item_name", ""),
@@ -198,23 +198,23 @@ class DataSyncService:
                 for item in processed
             ]
 
-            # Qdrant에 업서트
-            logger.info("📤 Qdrant에 벡터 업서트 중...")
-            qdrant_count = await qdrant_service.upsert_documents(
-                documents=qdrant_docs,
+            # Milvus에 업서트
+            logger.info("📤 Milvus에 벡터 업서트 중...")
+            milvus_count = await milvus_service.upsert_documents(
+                documents=milvus_docs,
                 dense_vectors=dense_embeddings,
                 sparse_vectors=sparse_embeddings,
             )
 
-            logger.info(f"✅ Qdrant 인덱싱 완료: {qdrant_count}개")
-            return qdrant_count
+            logger.info(f"✅ Milvus 인덱싱 완료: {milvus_count}개")
+            return milvus_count
 
         except Exception as e:
-            logger.error(f"❌ Qdrant 인덱싱 실패: {e}")
+            logger.error(f"❌ Milvus 인덱싱 실패: {e}")
             return 0
 
     async def rebuild_vectors(self) -> int:
-        """기존 DB 데이터로 벡터 인덱스 재구축 (PGVector + Qdrant)"""
+        """기존 DB 데이터로 벡터 인덱스 재구축 (PGVector + Milvus)"""
         vector_db = VectorDBService(self.session)
 
         # DB에서 모든 의약품 조회
@@ -271,8 +271,8 @@ class DataSyncService:
 
         pgvector_count = await vector_db.add_vectors_batch(vectors)
 
-        # Qdrant + SPLADE 인덱싱 (활성화된 경우)
-        if settings.ENABLE_QDRANT:
-            await self._build_qdrant_vectors(processed, embeddings)
+        # Milvus + SPLADE 인덱싱 (활성화된 경우)
+        if settings.ENABLE_MILVUS:
+            await self._build_milvus_vectors(processed, embeddings)
 
         return pgvector_count

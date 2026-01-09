@@ -34,21 +34,66 @@ services:
       retries: 5
     restart: unless-stopped
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: medical-rag-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
+  # Milvus Dependencies
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
     environment:
-      - QDRANT__SERVICE__GRPC_PORT=6334
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  milvus:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.0
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      - etcd
+      - minio
     restart: unless-stopped
 
   backend:
@@ -60,19 +105,19 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/medical_db
-      - QDRANT_URL=http://qdrant:6333
+      - MILVUS_URI=http://milvus:19530
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DATA_GO_KR_API_KEY=${DATA_GO_KR_API_KEY}
       - COHERE_API_KEY=${COHERE_API_KEY}
       - ENABLE_RERANKING=${ENABLE_RERANKING:-true}
-      - ENABLE_QDRANT=${ENABLE_QDRANT:-true}
+      - ENABLE_MILVUS=${ENABLE_MILVUS:-true}
       - ENABLE_MEMORY=${ENABLE_MEMORY:-true}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
     depends_on:
       db:
         condition: service_healthy
-      qdrant:
+      milvus:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -95,5 +140,7 @@ services:
 
 volumes:
   pgdata:
-  qdrant_data:
+  milvus_data:
+  etcd_data:
+  minio_data:
   redis_data:

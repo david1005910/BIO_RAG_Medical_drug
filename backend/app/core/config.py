@@ -50,10 +50,11 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int = 1536
     LLM_MODEL: str = "gpt-4o-mini"
 
-    # Qdrant Settings
-    QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_COLLECTION_NAME: str = "medical_drugs"
-    ENABLE_QDRANT: bool = True
+    # Milvus Settings
+    MILVUS_URI: str = "http://localhost:19530"
+    MILVUS_COLLECTION_NAME: str = "medical_drugs"
+    MILVUS_TOKEN: str = ""  # Optional: for Milvus authentication
+    ENABLE_MILVUS: bool = True
 
     # BGE-M3 Sparse Embedding Settings (SPLADE 대체)
     # BGE-M3는 100+ 언어 지원 (한국어 포함)

@@ -1,13 +1,13 @@
 """RAG 엔진 - 검색 + 생성 통합
 
 검색 모드:
-- Qdrant 모드 (ENABLE_QDRANT=true): Qdrant + SPLADE 하이브리드 검색
-- 기본 모드: PGVector + BM25 하이브리드 검색
+- Milvus 모드 (ENABLE_MILVUS=true): Milvus Dense + SPLADE Hybrid 검색
+- 기본 모드: PGVector Dense 벡터 검색
 
 점수 체계:
 - Dense Score: 0~1 (코사인 유사도)
-- Sparse Score: 0~30 기준 정규화 (0~1)
-- Hybrid Score: Dense×0.7 + Sparse×0.3
+- Sparse Score: 0~1 (BGE-M3 SPLADE, 10점 기준 정규화)
+- Hybrid Score: dense * 0.7 + sparse * 0.3
 """
 import asyncio
 import logging
@@ -21,8 +21,7 @@ from app.services.embedding import get_embedding_service, EmbeddingService
 from app.services.vector_db import VectorDBService
 from app.services.disease_vector_db import DiseaseVectorDBService
 from app.services.llm_service import get_llm_service, LLMService
-from app.services.bm25_search import get_hybrid_service, HybridSearchService
-from app.services.qdrant_service import get_qdrant_service, QdrantService
+from app.services.milvus_service import get_milvus_service, MilvusService
 from app.services.splade_service import get_splade_service, SPLADEService
 from app.external.cohere_client import get_reranker, CohereReranker
 from app.services.neo4j_service import get_neo4j_service, Neo4jService
@@ -103,11 +102,11 @@ class RAGEngine:
     """의약품 + 질병 정보 RAG 엔진
 
     검색(Retrieval) + 재순위(Reranking) + 생성(Generation)을 통합한 핵심 엔진
-    Hybrid Search: Dense (Vector) + Sparse (SPLADE/BM25) 결합 지원
+    Dense + Sparse(SPLADE) 하이브리드 검색 기반 의미적 + 키워드 매칭
 
     검색 모드:
-    - Qdrant 모드 (ENABLE_QDRANT=true): Qdrant + SPLADE 하이브리드 검색
-    - 기본 모드: PGVector + BM25 하이브리드 검색
+    - Milvus 모드 (ENABLE_MILVUS=true): Milvus Dense + SPLADE Hybrid 검색
+    - 기본 모드: PGVector Dense 벡터 검색
     """
 
     def __init__(
@@ -116,8 +115,7 @@ class RAGEngine:
         embedding_service: Optional[EmbeddingService] = None,
         llm_service: Optional[LLMService] = None,
         reranker: Optional[CohereReranker] = None,
-        hybrid_service: Optional[HybridSearchService] = None,
-        qdrant_service: Optional[QdrantService] = None,
+        milvus_service: Optional[MilvusService] = None,
         splade_service: Optional[SPLADEService] = None,
         neo4j_service: Optional[Neo4jService] = None,
     ):
@@ -128,29 +126,16 @@ class RAGEngine:
         self.llm_service = llm_service or get_llm_service()
         self.reranker = reranker or get_reranker()
 
-        # Qdrant + SPLADE 설정 (새로운 하이브리드 검색)
-        self.enable_qdrant = settings.ENABLE_QDRANT
-        if self.enable_qdrant:
-            self.qdrant_service = qdrant_service or get_qdrant_service()
+        # Milvus Hybrid 검색 설정 (Dense + SPLADE)
+        self.enable_milvus = settings.ENABLE_MILVUS
+        if self.enable_milvus:
+            self.milvus_service = milvus_service or get_milvus_service()
             self.splade_service = splade_service or get_splade_service()
-            logger.info("🚀 Qdrant + SPLADE 하이브리드 검색 모드 활성화")
+            logger.info("🚀 Milvus Dense + SPLADE Hybrid 검색 모드 활성화")
         else:
-            self.qdrant_service = None
+            self.milvus_service = None
             self.splade_service = None
-
-        # Hybrid Search 설정 (PGVector + BM25)
-        # Qdrant 모드에서도 폴백용으로 초기화
-        self.enable_hybrid = settings.ENABLE_HYBRID_SEARCH
-        if self.enable_hybrid:
-            self.hybrid_service = hybrid_service or get_hybrid_service(
-                session,
-                dense_weight=settings.DENSE_WEIGHT,
-                sparse_weight=settings.SPARSE_WEIGHT,
-            )
-            if not self.enable_qdrant:
-                logger.info("🔀 PGVector + BM25 Hybrid Search 모드 활성화")
-        else:
-            self.hybrid_service = None
+            logger.info("🔀 PGVector Dense 벡터 검색 모드 활성화")
 
         # Neo4j 그래프 서비스 설정
         self.enable_neo4j = settings.ENABLE_NEO4J
@@ -165,20 +150,18 @@ class RAGEngine:
         query: str,
         top_k: int = 5,
         use_reranking: bool = True,
-        use_hybrid: bool = True,
         query_embedding: Optional[List[float]] = None,
     ) -> List[SearchResult]:
         """증상 기반 의약품 검색 (LLM 응답 없음)
 
         검색 모드:
-        - Qdrant 모드: Qdrant + SPLADE 하이브리드 검색
-        - 기본 모드: PGVector + BM25 하이브리드 검색
+        - Qdrant 모드: Qdrant Dense + SPLADE Hybrid 검색
+        - 기본 모드: PGVector Dense 벡터 검색
 
         Args:
             query: 사용자 증상 설명
             top_k: 반환할 결과 수
             use_reranking: Cohere reranking 사용 여부
-            use_hybrid: Hybrid Search (Dense + Sparse) 사용 여부
             query_embedding: 사전 계산된 쿼리 임베딩 (재사용용)
 
         Returns:
@@ -190,21 +173,19 @@ class RAGEngine:
         expand_factor = 5 if (use_reranking and self.reranker.is_enabled()) else 3
         initial_top_k = top_k * expand_factor
 
-        # Qdrant + SPLADE 모드 (새로운 하이브리드 검색)
-        if self.enable_qdrant and self.qdrant_service and self.splade_service:
-            logger.info("🚀 Qdrant + SPLADE 하이브리드 검색 모드")
-            results = await self._search_with_qdrant(
+        # Milvus Hybrid 검색 모드 (Dense + SPLADE)
+        if self.enable_milvus and self.milvus_service:
+            logger.info("🚀 Milvus Dense + SPLADE Hybrid 검색")
+            results = await self._search_with_milvus_hybrid(
                 query=query,
                 top_k=initial_top_k,
-                use_hybrid=use_hybrid,
                 query_embedding=query_embedding,
             )
         else:
-            # 기존 PGVector + BM25 모드
+            # PGVector Dense 검색 모드
             results = await self._search_with_pgvector(
                 query=query,
                 top_k=initial_top_k,
-                use_hybrid=use_hybrid,
                 query_embedding=query_embedding,
             )
 
@@ -231,155 +212,107 @@ class RAGEngine:
                 use_method=r["use_method"],
                 caution_info=r["caution_info"],
                 side_effects=r["side_effects"],
-                similarity=r.get("similarity", r.get("hybrid_score", 0)),
+                similarity=r.get("hybrid_score", r.get("similarity", r.get("dense_score", 0))),
                 relevance_score=r.get("relevance_score"),
                 dense_score=r.get("dense_score"),
-                bm25_score=r.get("bm25_score"),
+                bm25_score=r.get("sparse_score"),  # SPLADE sparse score
                 hybrid_score=r.get("hybrid_score"),
             )
             for r in results
         ]
 
         # 로그에 검색 방식 표시
-        search_type = []
-        if self.enable_qdrant:
-            search_type.append("Qdrant+SPLADE")
-        elif use_hybrid and self.enable_hybrid:
-            search_type.append("PGVector+BM25")
-        else:
-            search_type.append("Dense")
+        search_type = ["Milvus+SPLADE" if self.enable_milvus else "PGVector"]
         if use_reranking and self.reranker.is_enabled():
             search_type.append("Reranking")
 
         logger.info(f"✅ {len(search_results)}개 결과 반환 [{'+'.join(search_type)}]")
         return search_results
 
-    async def _search_with_qdrant(
+    async def _search_with_milvus_hybrid(
         self,
         query: str,
         top_k: int,
-        use_hybrid: bool = True,
         query_embedding: Optional[List[float]] = None,
     ) -> List[Dict]:
-        """Qdrant + SPLADE 하이브리드 검색
+        """Milvus Dense + SPLADE Hybrid 검색
 
         Args:
             query: 검색 쿼리
             top_k: 반환할 결과 수
-            use_hybrid: 하이브리드 검색 사용 여부
             query_embedding: 사전 계산된 쿼리 임베딩
 
         Returns:
             검색 결과 딕셔너리 리스트
         """
         try:
-            # 1. 쿼리 임베딩 (Dense) - 제공되지 않은 경우에만 생성
+            # 쿼리 임베딩 (Dense) - 제공되지 않은 경우에만 생성
             if query_embedding is None:
                 query_embedding = await self.embedding_service.embed_text(query)
 
-            if use_hybrid:
-                # 2. SPLADE 임베딩 (Sparse)
-                sparse_vector = await self.splade_service.encode(query)
+            # SPLADE sparse 임베딩 생성 (쿼리 확장 포함)
+            sparse_vector = await self.splade_service.encode(query, expand=True)
 
-                # SPLADE가 빈 벡터를 반환하면 PGVector+BM25로 폴백
-                if not sparse_vector.get("indices") or not sparse_vector.get("values"):
-                    logger.warning("⚠️ SPLADE 빈 벡터 반환, PGVector+BM25로 폴백")
-                    return await self._search_with_pgvector(query, top_k, use_hybrid, query_embedding)
+            # Milvus Hybrid 검색 (Dense + Sparse)
+            results = await self.milvus_service.hybrid_search(
+                dense_vector=query_embedding,
+                sparse_vector=sparse_vector,
+                top_k=top_k,
+            )
 
-                # 3. Qdrant 하이브리드 검색
-                qdrant_results = await self.qdrant_service.hybrid_search(
-                    dense_vector=query_embedding,
-                    sparse_vector=sparse_vector,
-                    top_k=top_k,
-                    dense_weight=settings.DENSE_WEIGHT,
-                    sparse_weight=settings.SPARSE_WEIGHT,
-                )
+            # MilvusSearchResult를 Dict로 변환
+            result_dicts = []
+            for r in results:
+                result_dicts.append({
+                    "drug_id": r.drug_id,
+                    "item_name": r.item_name,
+                    "entp_name": r.entp_name,
+                    "efficacy": r.efficacy,
+                    "use_method": r.use_method,
+                    "caution_info": r.caution_info,
+                    "side_effects": r.side_effects,
+                    "dense_score": r.dense_score,
+                    "sparse_score": r.sparse_score,
+                    "hybrid_score": r.hybrid_score,
+                    "similarity": r.hybrid_score,
+                })
 
-                # QdrantSearchResult를 딕셔너리로 변환
-                results = [
-                    {
-                        "drug_id": r.drug_id,
-                        "item_name": r.item_name,
-                        "entp_name": r.entp_name,
-                        "efficacy": r.efficacy,
-                        "use_method": r.use_method,
-                        "caution_info": r.caution_info,
-                        "side_effects": r.side_effects,
-                        "similarity": r.hybrid_score,
-                        "dense_score": r.dense_score,
-                        "bm25_score": r.sparse_score,  # SPLADE 점수
-                        "hybrid_score": r.hybrid_score,
-                    }
-                    for r in qdrant_results
-                ]
-            else:
-                # Dense 검색만 수행
-                results = await self.qdrant_service.dense_search(
-                    dense_vector=query_embedding,
-                    top_k=top_k,
-                )
-                for r in results:
-                    r["bm25_score"] = 0
-                    r["hybrid_score"] = r.get("similarity", 0)
-
-            logger.info(f"✅ Qdrant 검색 완료: {len(results)}개 결과")
-            return results
+            logger.info(f"✅ Milvus Hybrid 검색 완료: {len(result_dicts)}개 결과")
+            return result_dicts
 
         except Exception as e:
-            logger.warning(f"⚠️ Qdrant 검색 실패, PGVector로 폴백: {e}")
-            # 폴백: 기존 PGVector + BM25 사용
-            return await self._search_with_pgvector(query, top_k, use_hybrid, query_embedding)
+            logger.warning(f"⚠️ Milvus Hybrid 검색 실패, PGVector로 폴백: {e}")
+            # 폴백: PGVector Dense 검색
+            return await self._search_with_pgvector(query, top_k, query_embedding)
 
     async def _search_with_pgvector(
         self,
         query: str,
         top_k: int,
-        use_hybrid: bool = True,
         query_embedding: Optional[List[float]] = None,
     ) -> List[Dict]:
-        """PGVector + BM25 하이브리드 검색 (기존 방식)
+        """PGVector Dense 벡터 검색
 
         Args:
             query: 검색 쿼리
             top_k: 반환할 결과 수
-            use_hybrid: 하이브리드 검색 사용 여부
             query_embedding: 사전 계산된 쿼리 임베딩
 
         Returns:
             검색 결과 딕셔너리 리스트
         """
-        # 1. 쿼리 임베딩 - 제공되지 않은 경우에만 생성
+        # 쿼리 임베딩 - 제공되지 않은 경우에만 생성
         if query_embedding is None:
             query_embedding = await self.embedding_service.embed_text(query)
 
-        # 2. 벡터 유사도 검색 (Dense Search)
-        dense_results = await self.vector_db.search_similar(query_embedding, top_k)
+        # PGVector Dense 검색
+        results = await self.vector_db.search_similar(query_embedding, top_k)
 
-        # 3. Hybrid Search (Dense + BM25 결합)
-        if use_hybrid and self.enable_hybrid and self.hybrid_service:
-            logger.info(f"🔀 PGVector + BM25 Hybrid Search 적용 중...")
-            try:
-                results = await self.hybrid_service.search(
-                    query=query,
-                    dense_results=dense_results,
-                    top_k=top_k,
-                )
-                logger.info(f"✅ Hybrid Search 완료: {len(results)}개 결과")
-            except Exception as e:
-                logger.warning(f"⚠️ Hybrid Search 실패, Dense만 사용: {e}")
-                for r in dense_results:
-                    r["dense_score"] = r.get("similarity", 0)
-                    r["bm25_score"] = 0
-                    r["hybrid_score"] = r.get("similarity", 0)
-                results = dense_results
-        else:
-            # Dense 검색만 사용 시 점수 필드 추가
-            for r in dense_results:
-                r["dense_score"] = r.get("similarity", 0)
-                r["bm25_score"] = 0
-                r["hybrid_score"] = r.get("similarity", 0)
-            results = dense_results
+        # dense_score 필드 추가
+        for r in results:
+            r["dense_score"] = r.get("similarity", 0)
 
+        logger.info(f"✅ PGVector Dense 검색 완료: {len(results)}개 결과")
         return results
 
     async def search_diseases(
@@ -667,7 +600,6 @@ class RAGEngine:
         query: str,
         top_k: int = 5,
         use_reranking: bool = True,
-        use_hybrid: bool = True,
         symptoms: Optional[List[str]] = None,
     ) -> tuple[List[SearchResult], GraphEnhancement]:
         """그래프 강화된 검색
@@ -676,14 +608,13 @@ class RAGEngine:
             query: 사용자 증상 설명
             top_k: 반환할 결과 수
             use_reranking: Cohere reranking 사용 여부
-            use_hybrid: Hybrid Search 사용 여부
             symptoms: 증상 목록 (증상 기반 약물 추천용)
 
         Returns:
             (검색 결과, 그래프 강화 데이터) 튜플
         """
         # 1. 기본 검색
-        search_results = await self.search(query, top_k, use_reranking, use_hybrid)
+        search_results = await self.search(query, top_k, use_reranking)
 
         # 2. 그래프 강화 데이터 조회
         drug_ids = [r.drug_id for r in search_results]

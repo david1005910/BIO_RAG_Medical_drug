@@ -5,7 +5,7 @@ from app.services.llm_service import LLMService
 from app.services.rag_engine import RAGEngine, SearchResult, RAGResponse
 from app.services.data_preprocessor import DrugDataPreprocessor
 from app.services.data_sync import DataSyncService
-from app.services.qdrant_service import QdrantService, get_qdrant_service, initialize_qdrant
+from app.services.milvus_service import MilvusService, get_milvus_service, initialize_milvus
 from app.services.splade_service import SPLADEService, get_splade_service, initialize_splade
 
 __all__ = [
@@ -17,9 +17,9 @@ __all__ = [
     "RAGResponse",
     "DrugDataPreprocessor",
     "DataSyncService",
-    "QdrantService",
-    "get_qdrant_service",
-    "initialize_qdrant",
+    "MilvusService",
+    "get_milvus_service",
+    "initialize_milvus",
     "SPLADEService",
     "get_splade_service",
     "initialize_splade",

@@ -13,6 +13,44 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# 증상 동의어 매핑 (일상어 → 의학 용어)
+# 쿼리 확장에 사용
+SYMPTOM_SYNONYMS = {
+    # 복부/소화 관련
+    '배가 아': ['복통', '복부통증', '위통'],
+    '배아파': ['복통', '위통', '장통'],
+    '속이': ['소화불량', '속쓰림', '위장'],
+    '속쓰려': ['속쓰림', '위염'],
+    '체했': ['소화불량', '체기'],
+    '더부룩': ['소화불량', '복부팽만'],
+    # 두통/머리 관련
+    '머리가 아': ['두통', '편두통'],
+    '머리아파': ['두통', '편두통'],
+    '지끈': ['두통', '편두통'],
+    # 열/감기 관련
+    '열나': ['발열', '고열'],
+    '열이나': ['발열', '고열'],
+    '으슬으슬': ['오한', '감기'],
+    '콧물나': ['콧물', '비염'],
+    '코막혀': ['코막힘', '비염'],
+    '기침나': ['기침', '해소'],
+    '목이 아': ['인후통', '인후염'],
+    '목아파': ['인후통', '인후염'],
+    # 근골격 관련
+    '허리가 아': ['요통', '허리통증'],
+    '허리아파': ['요통'],
+    '어깨가 아': ['어깨통증', '견통'],
+    '무릎이 아': ['무릎통증', '관절통'],
+    # 피부 관련
+    '가려워': ['가려움', '소양증'],
+    '두드러기': ['두드러기', '발진'],
+    # 기타 증상
+    '어지러워': ['어지러움', '현기증'],
+    '메스꺼워': ['메스꺼움', '구역'],
+    '피곤': ['피로', '권태'],
+    '잠이 안': ['불면', '수면장애'],
+}
+
 
 class SPLADEService:
     """BGE-M3 Sparse Embedding 서비스 (SPLADE 대체)
@@ -78,11 +116,40 @@ class SPLADEService:
             self._load_failed = True  # 재시도 방지
             return False
 
-    async def encode(self, text: str) -> Dict[str, Any]:
+    def expand_query(self, query: str) -> str:
+        """쿼리를 의학 용어로 확장
+
+        일상적인 증상 표현을 의학 용어로 확장하여
+        sparse 검색의 매칭률을 높입니다.
+
+        Args:
+            query: 원본 쿼리
+
+        Returns:
+            확장된 쿼리 (원본 + 의학 용어)
+        """
+        expanded_terms = []
+
+        # 동의어 사전에서 매칭되는 용어 찾기
+        for pattern, synonyms in SYMPTOM_SYNONYMS.items():
+            if pattern in query:
+                expanded_terms.extend(synonyms)
+
+        if expanded_terms:
+            # 중복 제거
+            unique_terms = list(set(expanded_terms))
+            expanded_query = f"{query} {' '.join(unique_terms)}"
+            logger.debug(f"📝 쿼리 확장: '{query}' → '{expanded_query}'")
+            return expanded_query
+
+        return query
+
+    async def encode(self, text: str, expand: bool = True) -> Dict[str, Any]:
         """텍스트를 BGE-M3 Sparse 벡터로 인코딩
 
         Args:
             text: 인코딩할 텍스트
+            expand: 쿼리 확장 여부 (기본 True)
 
         Returns:
             Sparse 벡터 딕셔너리 {"indices": [...], "values": [...]}
@@ -93,6 +160,10 @@ class SPLADEService:
         if not self.model:
             logger.error("BGE-M3 모델이 초기화되지 않았습니다.")
             return {"indices": [], "values": []}
+
+        # 쿼리 확장 적용
+        if expand:
+            text = self.expand_query(text)
 
         try:
             loop = asyncio.get_event_loop()
@@ -267,8 +338,8 @@ def get_splade_service() -> SPLADEService:
 
 async def initialize_splade() -> bool:
     """Sparse Embedding 서비스 초기화"""
-    if not settings.ENABLE_QDRANT:
-        logger.info("⚠️ BGE-M3 비활성화됨 (ENABLE_QDRANT=false)")
+    if not settings.ENABLE_MILVUS:
+        logger.info("⚠️ BGE-M3 비활성화됨 (ENABLE_MILVUS=false)")
         return False
 
     service = get_splade_service()

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import search, drugs, chat, admin, graph, documents
 from app.core.config import settings
-from app.services.qdrant_service import initialize_qdrant
+from app.services.milvus_service import initialize_milvus
 from app.services.splade_service import initialize_splade
 from app.services.bm25_search import initialize_bm25
 from app.services.memory_service import initialize_memory_backend, close_memory_backend
@@ -29,15 +29,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"📊 LLM 모델: {settings.LLM_MODEL}")
     logger.info(f"📊 임베딩 모델: {settings.EMBEDDING_MODEL}")
 
-    # Qdrant + SPLADE 초기화 (활성화된 경우)
-    if settings.ENABLE_QDRANT:
-        logger.info("🔧 Qdrant + SPLADE 서비스 초기화 중...")
-        qdrant_ok = await initialize_qdrant()
+    # Milvus + SPLADE 초기화 (활성화된 경우)
+    if settings.ENABLE_MILVUS:
+        logger.info("🔧 Milvus + SPLADE 서비스 초기화 중...")
+        milvus_ok = await initialize_milvus()
         splade_ok = await initialize_splade()
-        if qdrant_ok and splade_ok:
-            logger.info("✅ Qdrant + SPLADE 서비스 초기화 완료")
+        if milvus_ok and splade_ok:
+            logger.info("✅ Milvus + SPLADE 서비스 초기화 완료")
         else:
-            logger.warning("⚠️ Qdrant/SPLADE 초기화 실패, PGVector + BM25로 폴백")
+            logger.warning("⚠️ Milvus/SPLADE 초기화 실패, PGVector + BM25로 폴백")
             # BM25 인덱스 미리 초기화 (검색 시 동시성 문제 방지)
             await initialize_bm25()
     else:
