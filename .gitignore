@@ -20,6 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 .venv/
+.venv*/
 venv/
 ENV/
 
@@ -57,6 +58,7 @@ frontend/dist/
 
 # OS
 .DS_Store
+._*
 Thumbs.db
 
 # Screenshots
@@ -64,6 +66,10 @@ screenshot-*.png
 
 # Docker
 docker-compose.override.yml
+
+# Data and databases
+backend/data/
+*.db
 
 # Claude / Spec-kit (credentials may be stored here)
 .claude/
